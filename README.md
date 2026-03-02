@@ -67,7 +67,7 @@ The application will also auto-create all tables on first run if they do not alr
 flask --app resumeverifier run
 ```
 
-API available at **http://localhost:5000/api/**
+API available at **https://refonrecord.onrender.com/api/**
 
 ---
 
