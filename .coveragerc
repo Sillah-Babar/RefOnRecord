@@ -1,0 +1,7 @@
+[run]
+source = resumeverifier,database
+
+[report]
+omit =
+    database/populate_database.py
+    database/setup_database.py

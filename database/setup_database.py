@@ -1,61 +1,50 @@
 """
 Database Setup Script for Resume Verifier API
 
-This script creates all database tables and initializes the database schema.
-Run this before populating the database with test data.
+Creates all database tables using the Flask application factory so that
+Flask-SQLAlchemy models are registered correctly.
 
-Usage:
-    python setup_database.py
+Usage (from project root):
+    python database/setup_database.py
 """
-
+import sys
 import os
-from sqlalchemy import create_engine
-from models import Base, User, ResumeProject, Experience, VerificationRequest, ShareLink, Session
 
-# Database configuration
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///resume_verifier.db')
+# Ensure project root is on the Python path so resumeverifier can be imported.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from resumeverifier import create_app  # pylint: disable=wrong-import-position
+from resumeverifier.extensions import db  # pylint: disable=wrong-import-position
 
 
 def setup_database():
     """
-    Create database engine and initialize all tables.
-    
-    This function:
-    1. Creates a connection to the database
-    2. Drops all existing tables (if any)
-    3. Creates all tables defined in models.py
-    4. Confirms successful creation
+    Drop all existing tables and recreate the schema from the ORM models.
+
+    Creates a Flask application context to ensure SQLAlchemy is fully
+    initialised before calling ``db.create_all()``.
     """
     print("=" * 60)
     print("Resume Verifier API - Database Setup")
     print("=" * 60)
-    print()
-    
-    # Create database engine
-    print(f"Database URL: {DATABASE_URL}")
-    engine = create_engine(DATABASE_URL, echo=True)
-    
-    print("\n" + "-" * 60)
-    print("Dropping existing tables (if any)...")
-    print("-" * 60)
-    Base.metadata.drop_all(engine)
-    
-    print("\n" + "-" * 60)
-    print("Creating all tables...")
-    print("-" * 60)
-    Base.metadata.create_all(engine)
-    
-    print("\n" + "=" * 60)
-    print("Database setup completed successfully!")
-    print("=" * 60)
-    print("\nTables created:")
-    for table_name in Base.metadata.tables.keys():
-        print(f"  ✓ {table_name}")
-    
-    print("\nNext step: Run 'python populate_database.py' to add sample data")
-    print()
-    
-    return engine
+
+    app = create_app()
+    print(f"Database URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
+
+    with app.app_context():
+        print("Dropping existing tables...")
+        db.drop_all()
+        print("Creating all tables...")
+        db.create_all()
+        tables = db.engine.table_names() if hasattr(db.engine, "table_names") else list(
+            db.metadata.tables.keys()
+        )
+        print("\nTables created:")
+        for table in tables:
+            print(f"  ✓ {table}")
+
+    print("\nDatabase setup completed successfully!")
+    print("Next step: run 'python database/populate_database.py' to add sample data.")
 
 
 if __name__ == "__main__":
