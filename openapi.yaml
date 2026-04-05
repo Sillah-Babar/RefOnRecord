@@ -10,6 +10,8 @@ info:
     email: Sillah.Babar@student.oulu.fi
 
 servers:
+  - url: http://74.241.132.64:8080/api
+    description: VM (Azure)
   - url: https://refonrecord.onrender.com/api
     description: Production
   - url: http://localhost:5000/api
