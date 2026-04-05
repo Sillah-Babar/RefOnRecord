@@ -22,7 +22,17 @@ components:
     BearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: UUID
+      bearerFormat: JWT
+      description: >
+        JWT token obtained from POST /auth/login/. Pass as
+        `Authorization: Bearer <token>`. Tokens expire after 7 days.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: >
+        Machine-to-Machine API key for internal service endpoints (e.g. reminder
+        service). Must be included as `X-API-Key: <key>`.
 
   responses:
     BadRequest:
@@ -31,30 +41,40 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            error: "'email' is not a 'email'"
     Unauthorized:
       description: Missing, invalid, or expired bearer token
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            error: "Missing or invalid Authorization header"
     Forbidden:
       description: Authenticated user is not the owner of this resource
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            error: "Forbidden"
     NotFound:
       description: Resource not found
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            error: "Resource not found"
     Conflict:
       description: Duplicate resource (e.g. email or username already in use)
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+          example:
+            error: "Email or username already registered"
 
   schemas:
     Error:
@@ -69,199 +89,287 @@ components:
       properties:
         user_id:
           type: integer
+          example: 1
         email:
           type: string
           format: email
+          example: user@example.com
         username:
           type: string
+          example: johndoe
         phone_number:
           type: string
           nullable: true
+          example: "+358401234567"
         tier:
           type: string
           enum: [normal, premium]
+          example: normal
         created_at:
           type: string
           format: date-time
+          example: "2026-01-15T10:30:00"
         links:
           type: object
           properties:
             self:
               type: string
+              example: "/api/users/1/"
             projects:
               type: string
+              example: "/api/users/1/projects/"
 
     Project:
       type: object
       properties:
         project_id:
           type: integer
+          example: 42
         user_id:
           type: integer
+          example: 1
         project_name:
           type: string
+          example: "Software Engineer Resume 2026"
         template_style:
           type: string
           enum: [classic, modern, minimal]
+          example: modern
         phone_number:
           type: string
           nullable: true
+          example: "+358401234567"
         linkedin_url:
           type: string
           nullable: true
+          example: "https://linkedin.com/in/johndoe"
         github_url:
           type: string
           nullable: true
+          example: "https://github.com/johndoe"
         personal_website:
           type: string
           nullable: true
+          example: "https://johndoe.dev"
         current_company:
           type: string
           nullable: true
+          example: "Acme Corp"
         is_employed:
           type: boolean
+          example: true
         education_details:
           type: string
           nullable: true
+          example: "B.Sc. Computer Science, University of Oulu, 2020–2024"
         created_at:
           type: string
           format: date-time
+          example: "2026-01-20T09:00:00"
         updated_at:
           type: string
           format: date-time
+          example: "2026-03-01T14:22:00"
         links:
           type: object
           properties:
             self:
               type: string
+              example: "/api/users/1/projects/42/"
             owner:
               type: string
+              example: "/api/users/1/"
             experiences:
               type: string
+              example: "/api/users/1/projects/42/experiences/"
             shares:
               type: string
+              example: "/api/users/1/projects/42/shares/"
 
     Experience:
       type: object
       properties:
         experience_id:
           type: integer
+          example: 7
         project_id:
           type: integer
+          example: 42
         company_name:
           type: string
+          example: "Acme Corp"
         position_title:
           type: string
+          example: "Senior Software Engineer"
         start_date:
           type: string
           format: date
+          example: "2022-06-01"
         end_date:
           type: string
           format: date
           nullable: true
+          example: "2025-12-31"
         description:
           type: string
+          example: "Developed and maintained backend microservices using Python and Flask."
         verification_status:
           type: string
           enum: [not_requested, pending, verified, rejected]
+          example: verified
         created_at:
           type: string
           format: date-time
+          example: "2026-01-20T09:05:00"
         updated_at:
           type: string
           format: date-time
+          example: "2026-02-10T11:00:00"
         links:
           type: object
           properties:
             self:
               type: string
+              example: "/api/users/1/projects/42/experiences/7/"
             project:
               type: string
+              example: "/api/users/1/projects/42/"
             verification_requests:
               type: string
+              example: "/api/users/1/projects/42/experiences/7/verification-requests/"
 
     VerificationRequest:
       type: object
       properties:
         request_id:
           type: integer
+          example: 3
         experience_id:
           type: integer
+          example: 7
         verifier_name:
           type: string
+          example: "Jane Smith"
         verifier_position:
           type: string
+          example: "Engineering Manager"
         verifier_email:
           type: string
           format: email
+          example: "jane.smith@acme.com"
         verification_token:
           type: string
-          format: uuid
+          description: Hex token sent to the verifier by email (32-character hex string).
+          example: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
         status:
           type: string
           enum: [pending, verified, rejected, expired]
+          example: pending
         verifier_comment:
           type: string
           nullable: true
+          example: "Confirmed — John worked on our platform team."
         requested_at:
           type: string
           format: date-time
+          example: "2026-02-01T08:00:00"
         responded_at:
           type: string
           format: date-time
           nullable: true
+          example: "2026-02-03T10:15:00"
         expires_at:
           type: string
           format: date-time
+          example: "2026-03-03T08:00:00"
         links:
           type: object
           properties:
             self:
               type: string
+              example: "/api/users/1/projects/42/experiences/7/verification-requests/3/"
             experience:
               type: string
+              example: "/api/users/1/projects/42/experiences/7/"
             respond:
               type: string
+              example: "/api/verification-requests/3/respond/"
+
+    VerificationRequestWithContext:
+      allOf:
+        - $ref: "#/components/schemas/VerificationRequest"
+        - type: object
+          properties:
+            context:
+              type: object
+              description: >
+                Embedded experience and project context returned by M2M endpoints
+                so callers avoid extra round-trips.
+              properties:
+                company_name:
+                  type: string
+                  example: "Acme Corp"
+                position_title:
+                  type: string
+                  example: "Senior Software Engineer"
+                requester_username:
+                  type: string
+                  example: "johndoe"
+                project_id:
+                  type: integer
+                  example: 42
 
     ShareLink:
       type: object
       properties:
         share_id:
           type: integer
+          example: 10
         project_id:
           type: integer
+          example: 42
         share_token:
           type: string
-          format: uuid
+          description: Hex token used to access the public share URL (32-character hex string).
+          example: "f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6"
         recipient_email:
           type: string
           format: email
           nullable: true
+          example: "recruiter@company.com"
         access_type:
           type: string
           enum: [view, edit]
+          example: view
         email_subject:
           type: string
           nullable: true
+          example: "My Software Engineering Resume"
         email_message:
           type: string
           nullable: true
+          example: "Hi, please find my verified resume attached."
         view_count:
           type: integer
+          example: 5
         created_at:
           type: string
           format: date-time
+          example: "2026-03-10T12:00:00"
         expires_at:
           type: string
           format: date-time
           nullable: true
+          example: "2026-06-10T12:00:00"
         links:
           type: object
           properties:
             self:
               type: string
+              example: "/api/shares/f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6/"
             project:
               type: string
+              example: "/api/users/1/projects/42/"
 
 paths:
   # ── Authentication ──────────────────────────────────────────────────────────
@@ -269,7 +377,7 @@ paths:
   /auth/login/:
     post:
       tags: [Auth]
-      summary: Login and obtain a bearer token
+      summary: Login and obtain a JWT bearer token
       requestBody:
         required: true
         content:
@@ -289,7 +397,7 @@ paths:
               password: secret123
       responses:
         "200":
-          description: Login successful
+          description: Login successful — returns a signed JWT valid for 7 days
           content:
             application/json:
               schema:
@@ -297,24 +405,35 @@ paths:
                 properties:
                   token:
                     type: string
-                    format: uuid
+                    description: Signed JWT to use as Bearer token
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.abc"
                   user_id:
                     type: integer
+                    example: 1
                   expires_at:
                     type: string
                     format: date-time
+                    example: "2026-04-12T10:00:00+00:00"
+              example:
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.abc"
+                user_id: 1
+                expires_at: "2026-04-12T10:00:00+00:00"
         "400":
-          description: Invalid request body
+          description: Invalid or malformed request body
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                error: "Request body must be JSON"
         "401":
           description: Invalid email or password
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                error: "Invalid email or password"
 
   /auth/logout/:
     delete:
@@ -324,13 +443,9 @@ paths:
         - BearerAuth: []
       responses:
         "204":
-          description: Logged out successfully
+          description: Logged out successfully — token is now blocklisted
         "401":
-          description: Missing, invalid, or expired token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+          $ref: "#/components/responses/Unauthorized"
 
   # ── Users ───────────────────────────────────────────────────────────────────
 
@@ -376,23 +491,38 @@ paths:
             Location:
               schema:
                 type: string
-              description: URL of the created user
+              description: URL of the created user resource
+              example: "/api/users/1/"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+              example:
+                user_id: 1
+                email: user@example.com
+                username: johndoe
+                phone_number: null
+                tier: normal
+                created_at: "2026-04-05T12:00:00"
+                links:
+                  self: "/api/users/1/"
+                  projects: "/api/users/1/projects/"
         "400":
           description: Validation error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                error: "'password' is too short"
         "409":
           description: Email or username already registered
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              example:
+                error: "Email or username already registered"
 
   /users/{user_id}/:
     parameters:
@@ -401,10 +531,10 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
     get:
       tags: [Users]
       summary: Get a user profile (owner only)
-
       security:
         - BearerAuth: []
       responses:
@@ -414,6 +544,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+              example:
+                user_id: 1
+                email: user@example.com
+                username: johndoe
+                phone_number: "+358401234567"
+                tier: premium
+                created_at: "2026-01-15T10:30:00"
+                links:
+                  self: "/api/users/1/"
+                  projects: "/api/users/1/projects/"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -448,6 +588,9 @@ paths:
                 tier:
                   type: string
                   enum: [normal, premium]
+            example:
+              tier: premium
+              phone_number: "+358401234567"
       responses:
         "200":
           description: Updated user
@@ -455,6 +598,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/User"
+              example:
+                user_id: 1
+                email: user@example.com
+                username: johndoe
+                phone_number: "+358401234567"
+                tier: premium
+                created_at: "2026-01-15T10:30:00"
+                links:
+                  self: "/api/users/1/"
+                  projects: "/api/users/1/projects/"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -489,6 +642,7 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
     get:
       tags: [Projects]
       summary: List all projects for a user (owner only, cached 300s)
@@ -503,6 +657,31 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Project"
+              examples:
+                with_projects:
+                  summary: User with one project
+                  value:
+                    - project_id: 42
+                      user_id: 1
+                      project_name: "Software Engineer Resume 2026"
+                      template_style: modern
+                      phone_number: null
+                      linkedin_url: "https://linkedin.com/in/johndoe"
+                      github_url: null
+                      personal_website: null
+                      current_company: "Acme Corp"
+                      is_employed: true
+                      education_details: null
+                      created_at: "2026-01-20T09:00:00"
+                      updated_at: "2026-03-01T14:22:00"
+                      links:
+                        self: "/api/users/1/projects/42/"
+                        owner: "/api/users/1/"
+                        experiences: "/api/users/1/projects/42/experiences/"
+                        shares: "/api/users/1/projects/42/shares/"
+                empty:
+                  summary: User with no projects
+                  value: []
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -549,6 +728,11 @@ paths:
                   type: boolean
                 education_details:
                   type: string
+            example:
+              project_name: "Software Engineer Resume 2026"
+              template_style: modern
+              linkedin_url: "https://linkedin.com/in/johndoe"
+              is_employed: true
       responses:
         "201":
           description: Project created
@@ -556,10 +740,31 @@ paths:
             Location:
               schema:
                 type: string
+              description: URL of the created project
+              example: "/api/users/1/projects/42/"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Project"
+              example:
+                project_id: 42
+                user_id: 1
+                project_name: "Software Engineer Resume 2026"
+                template_style: modern
+                phone_number: null
+                linkedin_url: "https://linkedin.com/in/johndoe"
+                github_url: null
+                personal_website: null
+                current_company: null
+                is_employed: true
+                education_details: null
+                created_at: "2026-04-05T12:00:00"
+                updated_at: "2026-04-05T12:00:00"
+                links:
+                  self: "/api/users/1/projects/42/"
+                  owner: "/api/users/1/"
+                  experiences: "/api/users/1/projects/42/experiences/"
+                  shares: "/api/users/1/projects/42/shares/"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -576,11 +781,13 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
       - name: project_id
         in: path
         required: true
         schema:
           type: integer
+        example: 42
     get:
       tags: [Projects]
       summary: Get a single project (owner only, cached 300s)
@@ -593,6 +800,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Project"
+              example:
+                project_id: 42
+                user_id: 1
+                project_name: "Software Engineer Resume 2026"
+                template_style: modern
+                phone_number: null
+                linkedin_url: "https://linkedin.com/in/johndoe"
+                github_url: "https://github.com/johndoe"
+                personal_website: null
+                current_company: "Acme Corp"
+                is_employed: true
+                education_details: "B.Sc. Computer Science, University of Oulu, 2020–2024"
+                created_at: "2026-01-20T09:00:00"
+                updated_at: "2026-03-01T14:22:00"
+                links:
+                  self: "/api/users/1/projects/42/"
+                  owner: "/api/users/1/"
+                  experiences: "/api/users/1/projects/42/experiences/"
+                  shares: "/api/users/1/projects/42/shares/"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -639,6 +865,9 @@ paths:
                   type: boolean
                 education_details:
                   type: string
+            example:
+              current_company: "New Corp"
+              is_employed: true
       responses:
         "200":
           description: Updated project
@@ -646,6 +875,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Project"
+              example:
+                project_id: 42
+                user_id: 1
+                project_name: "Software Engineer Resume 2026"
+                template_style: modern
+                phone_number: null
+                linkedin_url: "https://linkedin.com/in/johndoe"
+                github_url: "https://github.com/johndoe"
+                personal_website: null
+                current_company: "New Corp"
+                is_employed: true
+                education_details: "B.Sc. Computer Science, University of Oulu, 2020–2024"
+                created_at: "2026-01-20T09:00:00"
+                updated_at: "2026-04-05T12:00:00"
+                links:
+                  self: "/api/users/1/projects/42/"
+                  owner: "/api/users/1/"
+                  experiences: "/api/users/1/projects/42/experiences/"
+                  shares: "/api/users/1/projects/42/shares/"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -678,11 +926,13 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
       - name: project_id
         in: path
         required: true
         schema:
           type: integer
+        example: 42
     get:
       tags: [Experiences]
       summary: List all experiences in a project (owner only, cached 300s)
@@ -697,6 +947,41 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Experience"
+              examples:
+                with_experiences:
+                  summary: Project with two experiences (one current, one past)
+                  value:
+                    - experience_id: 7
+                      project_id: 42
+                      company_name: "Acme Corp"
+                      position_title: "Senior Software Engineer"
+                      start_date: "2022-06-01"
+                      end_date: null
+                      description: "Developed and maintained backend microservices."
+                      verification_status: verified
+                      created_at: "2026-01-20T09:05:00"
+                      updated_at: "2026-02-10T11:00:00"
+                      links:
+                        self: "/api/users/1/projects/42/experiences/7/"
+                        project: "/api/users/1/projects/42/"
+                        verification_requests: "/api/users/1/projects/42/experiences/7/verification-requests/"
+                    - experience_id: 8
+                      project_id: 42
+                      company_name: "StartupXYZ"
+                      position_title: "Junior Developer"
+                      start_date: "2020-08-01"
+                      end_date: "2022-05-31"
+                      description: "Worked on frontend features in React."
+                      verification_status: not_requested
+                      created_at: "2026-01-20T09:10:00"
+                      updated_at: "2026-01-20T09:10:00"
+                      links:
+                        self: "/api/users/1/projects/42/experiences/8/"
+                        project: "/api/users/1/projects/42/"
+                        verification_requests: "/api/users/1/projects/42/experiences/8/verification-requests/"
+                empty:
+                  summary: Project with no experiences
+                  value: []
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -736,6 +1021,22 @@ paths:
                 description:
                   type: string
                   minLength: 1
+            examples:
+              current_job:
+                summary: Current (ongoing) position — no end_date
+                value:
+                  company_name: "Acme Corp"
+                  position_title: "Senior Software Engineer"
+                  start_date: "2022-06-01"
+                  description: "Developed and maintained backend microservices."
+              past_job:
+                summary: Past position with end date
+                value:
+                  company_name: "StartupXYZ"
+                  position_title: "Junior Developer"
+                  start_date: "2020-08-01"
+                  end_date: "2022-05-31"
+                  description: "Worked on frontend features in React."
       responses:
         "201":
           description: Experience created
@@ -743,16 +1044,42 @@ paths:
             Location:
               schema:
                 type: string
+              description: URL of the created experience
+              example: "/api/users/1/projects/42/experiences/7/"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Experience"
+              example:
+                experience_id: 7
+                project_id: 42
+                company_name: "Acme Corp"
+                position_title: "Senior Software Engineer"
+                start_date: "2022-06-01"
+                end_date: null
+                description: "Developed and maintained backend microservices."
+                verification_status: not_requested
+                created_at: "2026-04-05T12:00:00"
+                updated_at: "2026-04-05T12:00:00"
+                links:
+                  self: "/api/users/1/projects/42/experiences/7/"
+                  project: "/api/users/1/projects/42/"
+                  verification_requests: "/api/users/1/projects/42/experiences/7/verification-requests/"
         "400":
           description: Validation error or end_date before start_date
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                validation_error:
+                  summary: Missing required field
+                  value:
+                    error: "'company_name' is a required property"
+                date_error:
+                  summary: end_date before start_date
+                  value:
+                    error: "end_date must be >= start_date"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -767,16 +1094,19 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
       - name: project_id
         in: path
         required: true
         schema:
           type: integer
+        example: 42
       - name: experience_id
         in: path
         required: true
         schema:
           type: integer
+        example: 7
     get:
       tags: [Experiences]
       summary: Get a single experience (owner only, cached 300s)
@@ -789,6 +1119,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Experience"
+              examples:
+                verified:
+                  summary: Verified experience
+                  value:
+                    experience_id: 7
+                    project_id: 42
+                    company_name: "Acme Corp"
+                    position_title: "Senior Software Engineer"
+                    start_date: "2022-06-01"
+                    end_date: null
+                    description: "Developed and maintained backend microservices."
+                    verification_status: verified
+                    created_at: "2026-01-20T09:05:00"
+                    updated_at: "2026-02-10T11:00:00"
+                    links:
+                      self: "/api/users/1/projects/42/experiences/7/"
+                      project: "/api/users/1/projects/42/"
+                      verification_requests: "/api/users/1/projects/42/experiences/7/verification-requests/"
+                not_requested:
+                  summary: Experience with no verification yet
+                  value:
+                    experience_id: 8
+                    project_id: 42
+                    company_name: "StartupXYZ"
+                    position_title: "Junior Developer"
+                    start_date: "2020-08-01"
+                    end_date: "2022-05-31"
+                    description: "Worked on frontend features in React."
+                    verification_status: not_requested
+                    created_at: "2026-01-20T09:10:00"
+                    updated_at: "2026-01-20T09:10:00"
+                    links:
+                      self: "/api/users/1/projects/42/experiences/8/"
+                      project: "/api/users/1/projects/42/"
+                      verification_requests: "/api/users/1/projects/42/experiences/8/verification-requests/"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -827,6 +1192,8 @@ paths:
                 description:
                   type: string
                   minLength: 1
+            example:
+              description: "Led development of backend microservices and mentored junior engineers."
       responses:
         "200":
           description: Updated experience
@@ -834,6 +1201,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Experience"
+              example:
+                experience_id: 7
+                project_id: 42
+                company_name: "Acme Corp"
+                position_title: "Senior Software Engineer"
+                start_date: "2022-06-01"
+                end_date: null
+                description: "Led development of backend microservices and mentored junior engineers."
+                verification_status: verified
+                created_at: "2026-01-20T09:05:00"
+                updated_at: "2026-04-05T12:00:00"
+                links:
+                  self: "/api/users/1/projects/42/experiences/7/"
+                  project: "/api/users/1/projects/42/"
+                  verification_requests: "/api/users/1/projects/42/experiences/7/verification-requests/"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -866,16 +1248,19 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
       - name: project_id
         in: path
         required: true
         schema:
           type: integer
+        example: 42
       - name: experience_id
         in: path
         required: true
         schema:
           type: integer
+        example: 7
     get:
       tags: [Verification]
       summary: List all verification requests for an experience (owner only)
@@ -890,6 +1275,43 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/VerificationRequest"
+              examples:
+                with_requests:
+                  summary: Experience with one pending and one verified request
+                  value:
+                    - request_id: 3
+                      experience_id: 7
+                      verifier_name: "Jane Smith"
+                      verifier_position: "Engineering Manager"
+                      verifier_email: "jane.smith@acme.com"
+                      verification_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+                      status: verified
+                      verifier_comment: "Confirmed."
+                      requested_at: "2026-02-01T08:00:00"
+                      responded_at: "2026-02-03T10:15:00"
+                      expires_at: "2026-03-03T08:00:00"
+                      links:
+                        self: "/api/users/1/projects/42/experiences/7/verification-requests/3/"
+                        experience: "/api/users/1/projects/42/experiences/7/"
+                        respond: "/api/verification-requests/3/respond/"
+                    - request_id: 4
+                      experience_id: 7
+                      verifier_name: "Bob Jones"
+                      verifier_position: "CTO"
+                      verifier_email: "bob@acme.com"
+                      verification_token: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5"
+                      status: pending
+                      verifier_comment: null
+                      requested_at: "2026-03-15T09:00:00"
+                      responded_at: null
+                      expires_at: "2026-04-14T09:00:00"
+                      links:
+                        self: "/api/users/1/projects/42/experiences/7/verification-requests/4/"
+                        experience: "/api/users/1/projects/42/experiences/7/"
+                        respond: "/api/verification-requests/4/respond/"
+                empty:
+                  summary: No requests yet
+                  value: []
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -926,6 +1348,10 @@ paths:
                   type: string
                   format: email
                   maxLength: 255
+            example:
+              verifier_name: "Jane Smith"
+              verifier_position: "Engineering Manager"
+              verifier_email: "jane.smith@acme.com"
       responses:
         "201":
           description: Verification request created and email sent
@@ -933,10 +1359,28 @@ paths:
             Location:
               schema:
                 type: string
+              description: URL of the created verification request
+              example: "/api/users/1/projects/42/experiences/7/verification-requests/3/"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerificationRequest"
+              example:
+                request_id: 3
+                experience_id: 7
+                verifier_name: "Jane Smith"
+                verifier_position: "Engineering Manager"
+                verifier_email: "jane.smith@acme.com"
+                verification_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+                status: pending
+                verifier_comment: null
+                requested_at: "2026-04-05T12:00:00"
+                responded_at: null
+                expires_at: "2026-05-05T12:00:00"
+                links:
+                  self: "/api/users/1/projects/42/experiences/7/verification-requests/3/"
+                  experience: "/api/users/1/projects/42/experiences/7/"
+                  respond: "/api/verification-requests/3/respond/"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -953,21 +1397,25 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
       - name: project_id
         in: path
         required: true
         schema:
           type: integer
+        example: 42
       - name: experience_id
         in: path
         required: true
         schema:
           type: integer
+        example: 7
       - name: request_id
         in: path
         required: true
         schema:
           type: integer
+        example: 3
     get:
       tags: [Verification]
       summary: Get a single verification request (owner only)
@@ -980,6 +1428,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerificationRequest"
+              examples:
+                pending:
+                  summary: Pending request (verifier not yet responded)
+                  value:
+                    request_id: 4
+                    experience_id: 7
+                    verifier_name: "Bob Jones"
+                    verifier_position: "CTO"
+                    verifier_email: "bob@acme.com"
+                    verification_token: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5"
+                    status: pending
+                    verifier_comment: null
+                    requested_at: "2026-03-15T09:00:00"
+                    responded_at: null
+                    expires_at: "2026-04-14T09:00:00"
+                    links:
+                      self: "/api/users/1/projects/42/experiences/7/verification-requests/4/"
+                      experience: "/api/users/1/projects/42/experiences/7/"
+                      respond: "/api/verification-requests/4/respond/"
+                verified:
+                  summary: Verified request with comment
+                  value:
+                    request_id: 3
+                    experience_id: 7
+                    verifier_name: "Jane Smith"
+                    verifier_position: "Engineering Manager"
+                    verifier_email: "jane.smith@acme.com"
+                    verification_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+                    status: verified
+                    verifier_comment: "Confirmed — John worked on our platform team."
+                    requested_at: "2026-02-01T08:00:00"
+                    responded_at: "2026-02-03T10:15:00"
+                    expires_at: "2026-03-03T08:00:00"
+                    links:
+                      self: "/api/users/1/projects/42/experiences/7/verification-requests/3/"
+                      experience: "/api/users/1/projects/42/experiences/7/"
+                      respond: "/api/verification-requests/3/respond/"
+                rejected:
+                  summary: Rejected request
+                  value:
+                    request_id: 5
+                    experience_id: 7
+                    verifier_name: "Alice Brown"
+                    verifier_position: "HR Director"
+                    verifier_email: "alice@acme.com"
+                    verification_token: "c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6"
+                    status: rejected
+                    verifier_comment: "Cannot confirm this employment record."
+                    requested_at: "2026-01-10T08:00:00"
+                    responded_at: "2026-01-12T14:00:00"
+                    expires_at: "2026-02-09T08:00:00"
+                    links:
+                      self: "/api/users/1/projects/42/experiences/7/verification-requests/5/"
+                      experience: "/api/users/1/projects/42/experiences/7/"
+                      respond: "/api/verification-requests/5/respond/"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -994,13 +1497,18 @@ paths:
         required: true
         schema:
           type: integer
+        example: 3
     post:
       tags: [Verification]
-      summary: Submit a verifier response (public — no login required)
+      summary: Submit a verifier response (M2M API key required)
       description: >
         The verifier submits the `verification_token` (from their email link)
-        along with "verified" or "rejected". Updates the associated experience
-        `verification_status` accordingly.
+        along with "verified" or "rejected". Validates the token, checks the
+        request is still pending and not expired, then updates the associated
+        experience `verification_status` accordingly.
+        Requires a valid `X-API-Key` header.
+      security:
+        - ApiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1012,25 +1520,321 @@ paths:
               properties:
                 verification_token:
                   type: string
-                  format: uuid
+                  description: The hex token from the verification email
+                  example: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
                 status:
                   type: string
                   enum: [verified, rejected]
                 verifier_comment:
                   type: string
+                  example: "Confirmed — John worked on our platform team."
+            examples:
+              verified:
+                summary: Verifier confirms the employment
+                value:
+                  verification_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+                  status: verified
+                  verifier_comment: "Confirmed — John worked on our platform team."
+              rejected:
+                summary: Verifier rejects the employment claim
+                value:
+                  verification_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+                  status: rejected
+                  verifier_comment: "Cannot confirm this employment record."
       responses:
         "200":
-          description: Response recorded
+          description: Response recorded — returns the updated verification request
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VerificationRequest"
+              example:
+                request_id: 3
+                experience_id: 7
+                verifier_name: "Jane Smith"
+                verifier_position: "Engineering Manager"
+                verifier_email: "jane.smith@acme.com"
+                verification_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+                status: verified
+                verifier_comment: "Confirmed — John worked on our platform team."
+                requested_at: "2026-02-01T08:00:00"
+                responded_at: "2026-02-03T10:15:00"
+                expires_at: "2026-03-03T08:00:00"
+                links:
+                  self: "/api/users/1/projects/42/experiences/7/verification-requests/3/"
+                  experience: "/api/users/1/projects/42/experiences/7/"
+                  respond: "/api/verification-requests/3/respond/"
         "400":
-          description: Invalid token, expired token, or already responded
+          description: Invalid token, expired token, or request already responded
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                invalid_token:
+                  summary: Wrong token
+                  value:
+                    error: "Invalid verification token"
+                expired:
+                  summary: Token has expired
+                  value:
+                    error: "Verification token has expired"
+                already_responded:
+                  summary: Request already has a final status
+                  value:
+                    error: "Request already has status 'verified'"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /verify/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+        example: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+      - name: action
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [verified, rejected]
+          default: verified
+        description: The verifier's decision. Defaults to "verified".
+        example: verified
+    get:
+      tags: [Verification]
+      summary: Email link handler — verifier clicks to confirm or reject (public)
+      description: >
+        This endpoint is linked directly in the verification email sent to
+        verifiers. The verifier clicks the link to confirm (`action=verified`)
+        or reject (`action=rejected`) without needing a login. On success it
+        returns an HTML confirmation page. On error it returns JSON.
+      responses:
+        "200":
+          description: >
+            Decision recorded. Returns an HTML page (not JSON) showing a
+            success or rejection confirmation card.
+          content:
+            text/html:
+              schema:
+                type: string
+              example: |
+                <!DOCTYPE html><html><body><h1>Verification Confirmed</h1></body></html>
+        "400":
+          description: Token expired, already responded, or invalid action value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                expired:
+                  value:
+                    error: "Verification token has expired"
+                already_responded:
+                  value:
+                    error: "Request already has status 'verified'"
+                bad_action:
+                  value:
+                    error: "action must be 'verified' or 'rejected'"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Verification token not found"
+
+  # ── M2M Verification Requests ────────────────────────────────────────────────
+
+  /verification-requests/:
+    get:
+      tags: [Verification M2M]
+      summary: List verification requests with optional filters (M2M API key required)
+      description: >
+        Internal endpoint for automated services (e.g. reminder service).
+        Returns all verification requests, optionally filtered by status,
+        age, or expiry. Each result includes embedded experience and project
+        context to avoid extra round-trips. Requires `X-API-Key` header.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, verified, rejected, expired]
+          description: Filter by request status
+          example: pending
+        - name: older_than
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Only return requests older than N days
+          example: 7
+        - name: expired
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          description: If "true", only return requests whose token has expired
+          example: "true"
+      responses:
+        "200":
+          description: List of verification requests with embedded context
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VerificationRequestWithContext"
+              examples:
+                pending_expired:
+                  summary: One expired-token pending request
+                  value:
+                    - request_id: 4
+                      experience_id: 7
+                      verifier_name: "Bob Jones"
+                      verifier_position: "CTO"
+                      verifier_email: "bob@acme.com"
+                      verification_token: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5"
+                      status: pending
+                      verifier_comment: null
+                      requested_at: "2026-03-01T09:00:00"
+                      responded_at: null
+                      expires_at: "2026-03-31T09:00:00"
+                      links:
+                        self: "/api/users/1/projects/42/experiences/7/verification-requests/4/"
+                        experience: "/api/users/1/projects/42/experiences/7/"
+                        respond: "/api/verification-requests/4/respond/"
+                      context:
+                        company_name: "Acme Corp"
+                        position_title: "Senior Software Engineer"
+                        requester_username: "johndoe"
+                        project_id: 42
+                empty:
+                  summary: No matching requests
+                  value: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /verification-requests/{request_id}/:
+    parameters:
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 3
+    get:
+      tags: [Verification M2M]
+      summary: Get a single verification request with full context (M2M API key required)
+      description: >
+        Returns verifier details, experience info, and project owner name so
+        the caller (e.g. reminder service) can compose emails without extra API
+        calls. Requires `X-API-Key` header.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Verification request with embedded context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationRequestWithContext"
+              example:
+                request_id: 3
+                experience_id: 7
+                verifier_name: "Jane Smith"
+                verifier_position: "Engineering Manager"
+                verifier_email: "jane.smith@acme.com"
+                verification_token: "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+                status: pending
+                verifier_comment: null
+                requested_at: "2026-02-01T08:00:00"
+                responded_at: null
+                expires_at: "2026-03-03T08:00:00"
+                links:
+                  self: "/api/users/1/projects/42/experiences/7/verification-requests/3/"
+                  experience: "/api/users/1/projects/42/experiences/7/"
+                  respond: "/api/verification-requests/3/respond/"
+                context:
+                  company_name: "Acme Corp"
+                  position_title: "Senior Software Engineer"
+                  requester_username: "johndoe"
+                  project_id: 42
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Verification M2M]
+      summary: Mark a pending verification request as expired (M2M API key required)
+      description: >
+        Only accepts `{"status": "expired"}`. Resets the parent experience's
+        `verification_status` to "not_requested" so the resume owner can send
+        a fresh request. Requires `X-API-Key` header.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              additionalProperties: false
+              properties:
+                status:
+                  type: string
+                  enum: [expired]
+            example:
+              status: expired
+      responses:
+        "200":
+          description: Request marked as expired — returns the updated record with context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationRequestWithContext"
+              example:
+                request_id: 4
+                experience_id: 7
+                verifier_name: "Bob Jones"
+                verifier_position: "CTO"
+                verifier_email: "bob@acme.com"
+                verification_token: "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5"
+                status: expired
+                verifier_comment: null
+                requested_at: "2026-03-01T09:00:00"
+                responded_at: null
+                expires_at: "2026-03-31T09:00:00"
+                links:
+                  self: "/api/users/1/projects/42/experiences/7/verification-requests/4/"
+                  experience: "/api/users/1/projects/42/experiences/7/"
+                  respond: "/api/verification-requests/4/respond/"
+                context:
+                  company_name: "Acme Corp"
+                  position_title: "Senior Software Engineer"
+                  requester_username: "johndoe"
+                  project_id: 42
+        "400":
+          description: Request is not in pending status or invalid body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error: "Request already has status 'verified'"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -1043,11 +1847,13 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
       - name: project_id
         in: path
         required: true
         schema:
           type: integer
+        example: 42
     get:
       tags: [Shares]
       summary: List all share links for a project (owner only)
@@ -1062,6 +1868,39 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/ShareLink"
+              examples:
+                with_shares:
+                  summary: Project with one permanent and one expiring share
+                  value:
+                    - share_id: 10
+                      project_id: 42
+                      share_token: "f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6"
+                      recipient_email: "recruiter@company.com"
+                      access_type: view
+                      email_subject: "My Resume"
+                      email_message: null
+                      view_count: 3
+                      created_at: "2026-03-10T12:00:00"
+                      expires_at: null
+                      links:
+                        self: "/api/shares/f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6/"
+                        project: "/api/users/1/projects/42/"
+                    - share_id: 11
+                      project_id: 42
+                      share_token: "e8d7c6b5a4f3e8d7c6b5a4f3e8d7c6b5"
+                      recipient_email: null
+                      access_type: view
+                      email_subject: null
+                      email_message: null
+                      view_count: 0
+                      created_at: "2026-04-01T08:00:00"
+                      expires_at: "2026-07-01T08:00:00"
+                      links:
+                        self: "/api/shares/e8d7c6b5a4f3e8d7c6b5a4f3e8d7c6b5/"
+                        project: "/api/users/1/projects/42/"
+                empty:
+                  summary: No share links yet
+                  value: []
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1099,6 +1938,18 @@ paths:
                   format: date-time
                   nullable: true
                   description: Omit or set null for a permanent link
+            examples:
+              with_recipient:
+                summary: Share sent to a specific recruiter with expiry
+                value:
+                  recipient_email: "recruiter@company.com"
+                  access_type: view
+                  email_subject: "My Software Engineering Resume"
+                  expires_at: "2026-07-01T00:00:00"
+              permanent_anonymous:
+                summary: Permanent anonymous share link (no expiry, no email)
+                value:
+                  access_type: view
       responses:
         "201":
           description: Share link created
@@ -1106,10 +1957,26 @@ paths:
             Location:
               schema:
                 type: string
+              description: Public URL of the created share link
+              example: "/api/shares/f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6/"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ShareLink"
+              example:
+                share_id: 10
+                project_id: 42
+                share_token: "f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6"
+                recipient_email: "recruiter@company.com"
+                access_type: view
+                email_subject: "My Software Engineering Resume"
+                email_message: null
+                view_count: 0
+                created_at: "2026-04-05T12:00:00"
+                expires_at: "2026-07-01T00:00:00"
+                links:
+                  self: "/api/shares/f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6/"
+                  project: "/api/users/1/projects/42/"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1126,11 +1993,14 @@ paths:
         required: true
         schema:
           type: string
-          format: uuid
+        example: "f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6"
     get:
       tags: [Shares]
       summary: View a shared resume (public — no login required, cached 300s)
-      description: Increments the share link's `view_count` on each access.
+      description: >
+        Increments the share link's `view_count` on each access. Returns the
+        full project, all its experiences, and the share link metadata.
+        Returns 404 if the token is unknown or the link has expired.
       responses:
         "200":
           description: Shared resume data
@@ -1147,12 +2017,68 @@ paths:
                       $ref: "#/components/schemas/Experience"
                   share:
                     $ref: "#/components/schemas/ShareLink"
+              example:
+                project:
+                  project_id: 42
+                  user_id: 1
+                  project_name: "Software Engineer Resume 2026"
+                  template_style: modern
+                  phone_number: null
+                  linkedin_url: "https://linkedin.com/in/johndoe"
+                  github_url: "https://github.com/johndoe"
+                  personal_website: null
+                  current_company: "Acme Corp"
+                  is_employed: true
+                  education_details: "B.Sc. Computer Science, University of Oulu, 2020–2024"
+                  created_at: "2026-01-20T09:00:00"
+                  updated_at: "2026-03-01T14:22:00"
+                  links:
+                    self: "/api/users/1/projects/42/"
+                    owner: "/api/users/1/"
+                    experiences: "/api/users/1/projects/42/experiences/"
+                    shares: "/api/users/1/projects/42/shares/"
+                experiences:
+                  - experience_id: 7
+                    project_id: 42
+                    company_name: "Acme Corp"
+                    position_title: "Senior Software Engineer"
+                    start_date: "2022-06-01"
+                    end_date: null
+                    description: "Developed and maintained backend microservices."
+                    verification_status: verified
+                    created_at: "2026-01-20T09:05:00"
+                    updated_at: "2026-02-10T11:00:00"
+                    links:
+                      self: "/api/users/1/projects/42/experiences/7/"
+                      project: "/api/users/1/projects/42/"
+                      verification_requests: "/api/users/1/projects/42/experiences/7/verification-requests/"
+                share:
+                  share_id: 10
+                  project_id: 42
+                  share_token: "f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6"
+                  recipient_email: "recruiter@company.com"
+                  access_type: view
+                  email_subject: "My Resume"
+                  email_message: null
+                  view_count: 4
+                  created_at: "2026-03-10T12:00:00"
+                  expires_at: null
+                  links:
+                    self: "/api/shares/f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6/"
+                    project: "/api/users/1/projects/42/"
         "404":
           description: Share link not found or expired
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                not_found:
+                  value:
+                    error: "Share link not found"
+                expired:
+                  value:
+                    error: "Share link has expired"
 
   /users/{user_id}/projects/{project_id}/shares/{share_id}/:
     parameters:
@@ -1161,16 +2087,19 @@ paths:
         required: true
         schema:
           type: integer
+        example: 1
       - name: project_id
         in: path
         required: true
         schema:
           type: integer
+        example: 42
       - name: share_id
         in: path
         required: true
         schema:
           type: integer
+        example: 10
     delete:
       tags: [Shares]
       summary: Delete a share link (owner only)
@@ -1197,6 +2126,10 @@ tags:
   - name: Experiences
     description: Work experience entries within a project
   - name: Verification
-    description: Request and respond to employment verifications
+    description: Request and respond to employment verifications (user-facing)
+  - name: Verification M2M
+    description: >
+      Machine-to-machine endpoints for internal services (reminder service).
+      Require X-API-Key header authentication.
   - name: Shares
     description: Create and manage public share links for projects
