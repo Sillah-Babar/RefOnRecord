@@ -31,6 +31,7 @@ Add the use of AI.
 * **TEACHER:**
 
 ### Action points
+* Doc Strings — Expand implementation of doc strings.
 * Stateless API — No server-side session storage between requests. Each request must carry all necessary context.
 * Cyclic Imports — Audit and fix circular import chains. Refactor shared dependencies into a separate module to break cycles.
 * Machine-to-Machine (M2M) Auth — Implement M2M authentication for the verification request flow.
