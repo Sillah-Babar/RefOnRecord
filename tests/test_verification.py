@@ -3,6 +3,8 @@ from unittest.mock import patch
 
 from tests.conftest import make_project, make_experience
 
+M2M_HEADERS = {"X-API-Key": "test-m2m-key"}
+
 
 def make_vr(client, app, db, registered_user, auth_headers):
     """Helper: create a project, experience, and verification request; return IDs."""
@@ -10,7 +12,7 @@ def make_vr(client, app, db, registered_user, auth_headers):
     eid = make_experience(app, db, pid)
     with patch("resumeverifier.email_service.send_verification_email"):
         resp = client.post(
-            f"/api/experiences/{eid}/verification-requests/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
             json={
                 "verifier_name": "Boss Man",
                 "verifier_position": "Manager",
@@ -19,25 +21,27 @@ def make_vr(client, app, db, registered_user, auth_headers):
             headers=auth_headers,
         )
     assert resp.status_code == 201
-    return eid, resp.get_json()["request_id"], resp.get_json()["verification_token"]
+    return pid, eid, resp.get_json()["request_id"], resp.get_json()["verification_token"]
 
 
 class TestListVerificationRequests:
-    """GET /api/experiences/<experience>/verification-requests/"""
+    """GET /api/users/<user>/projects/<project>/experiences/<experience>/verification-requests/"""
 
     def test_list_empty(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.get(
-            f"/api/experiences/{eid}/verification-requests/", headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert resp.get_json() == []
 
     def test_list_with_item(self, client, app, db, registered_user, auth_headers):
-        eid, _, _ = make_vr(client, app, db, registered_user, auth_headers)
+        pid, eid, _, _ = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.get(
-            f"/api/experiences/{eid}/verification-requests/", headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert len(resp.get_json()) == 1
@@ -48,14 +52,14 @@ class TestListVerificationRequests:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.get(
-            f"/api/experiences/{eid}/verification-requests/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
             headers=second_auth_headers,
         )
         assert resp.status_code == 403
 
 
 class TestCreateVerificationRequest:
-    """POST /api/experiences/<experience>/verification-requests/"""
+    """POST /api/users/<user>/projects/<project>/experiences/<experience>/verification-requests/"""
 
     @patch("resumeverifier.email_service.send_verification_email")
     def test_create_success(self, mock_mail, client, app, db, registered_user, auth_headers):
@@ -63,7 +67,7 @@ class TestCreateVerificationRequest:
         eid = make_experience(app, db, pid)
         mock_mail.return_value = True
         resp = client.post(
-            f"/api/experiences/{eid}/verification-requests/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
             json={
                 "verifier_name": "Jane Doe",
                 "verifier_position": "Director",
@@ -84,7 +88,7 @@ class TestCreateVerificationRequest:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.post(
-            f"/api/experiences/{eid}/verification-requests/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
             json={"verifier_name": "X", "verifier_position": "Y"},
             headers=auth_headers,
         )
@@ -96,7 +100,7 @@ class TestCreateVerificationRequest:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.post(
-            f"/api/experiences/{eid}/verification-requests/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
             data="bad",
             content_type="text/plain",
             headers=auth_headers,
@@ -109,7 +113,7 @@ class TestCreateVerificationRequest:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.post(
-            f"/api/experiences/{eid}/verification-requests/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/",
             json={
                 "verifier_name": "X",
                 "verifier_position": "Y",
@@ -121,12 +125,13 @@ class TestCreateVerificationRequest:
 
 
 class TestGetVerificationRequest:
-    """GET /api/verification-requests/<vr>/"""
+    """GET /api/users/<user>/projects/<project>/experiences/<experience>/verification-requests/<vr>/"""
 
     def test_get_own(self, client, app, db, registered_user, auth_headers):
-        _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
+        pid, eid, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.get(
-            f"/api/verification-requests/{rid}/", headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/{rid}/",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert "links" in resp.get_json()
@@ -134,23 +139,26 @@ class TestGetVerificationRequest:
     def test_get_forbidden(
         self, client, app, db, registered_user, auth_headers, second_auth_headers
     ):
-        _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
-        # Bob should not see Alice's verification request
+        pid, eid, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.get(
-            f"/api/verification-requests/{rid}/", headers=second_auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/verification-requests/{rid}/",
+            headers=second_auth_headers,
         )
         assert resp.status_code == 403
 
-    def test_get_not_found(self, client, auth_headers):
-        resp = client.get("/api/verification-requests/99999/", headers=auth_headers)
+    def test_get_not_found(self, client, registered_user, auth_headers):
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/99999/experiences/99999/verification-requests/99999/",
+            headers=auth_headers,
+        )
         assert resp.status_code == 404
 
 
 class TestVerificationRespond:
-    """POST /api/verification-requests/<id>/respond/"""
+    """POST /api/verification-requests/<id>/respond/ (M2M API key required)"""
 
     def test_respond_verified(self, client, app, db, registered_user, auth_headers):
-        _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
+        _, _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={
@@ -158,6 +166,7 @@ class TestVerificationRespond:
                 "status": "verified",
                 "verifier_comment": "Yes, confirmed.",
             },
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 200
         data = resp.get_json()
@@ -165,43 +174,48 @@ class TestVerificationRespond:
         assert data["verifier_comment"] == "Yes, confirmed."
 
     def test_respond_rejected(self, client, app, db, registered_user, auth_headers):
-        _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
+        _, _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={"verification_token": token, "status": "rejected"},
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 200
         assert resp.get_json()["status"] == "rejected"
 
     def test_respond_wrong_token(self, client, app, db, registered_user, auth_headers):
-        _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
+        _, _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={"verification_token": "wrongtoken", "status": "verified"},
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 400
 
     def test_respond_invalid_status(
         self, client, app, db, registered_user, auth_headers
     ):
-        _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
+        _, _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={"verification_token": token, "status": "maybe"},
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 400
 
     def test_respond_already_responded(
         self, client, app, db, registered_user, auth_headers
     ):
-        _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
+        _, _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
         client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={"verification_token": token, "status": "verified"},
+            headers=M2M_HEADERS,
         )
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={"verification_token": token, "status": "verified"},
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 400
 
@@ -209,24 +223,36 @@ class TestVerificationRespond:
         resp = client.post(
             "/api/verification-requests/99999/respond/",
             json={"verification_token": "x", "status": "verified"},
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 404
 
     def test_respond_not_json(self, client, app, db, registered_user, auth_headers):
-        _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
+        _, _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             data="bad",
             content_type="text/plain",
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 400
 
     def test_respond_missing_token_field(
         self, client, app, db, registered_user, auth_headers
     ):
-        _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
+        _, _, rid, _ = make_vr(client, app, db, registered_user, auth_headers)
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={"status": "verified"},
+            headers=M2M_HEADERS,
         )
         assert resp.status_code == 400
+
+    def test_respond_no_api_key(self, client, app, db, registered_user, auth_headers):
+        """Without the M2M API key the endpoint returns 401."""
+        _, _, rid, token = make_vr(client, app, db, registered_user, auth_headers)
+        resp = client.post(
+            f"/api/verification-requests/{rid}/respond/",
+            json={"verification_token": token, "status": "verified"},
+        )
+        assert resp.status_code == 401

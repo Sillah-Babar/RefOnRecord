@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask
 
-from resumeverifier.extensions import db, cache  # re-exported for convenience
+from resumeverifier.extensions import db, cache
 
 load_dotenv()
 
@@ -23,6 +23,7 @@ def create_app(test_config=None):
         CACHE_TYPE="SimpleCache",
         CACHE_DEFAULT_TIMEOUT=300,
         JSON_SORT_KEYS=False,
+        M2M_API_KEYS=set(filter(None, os.environ.get("M2M_API_KEYS", "").split(","))),
     )
 
     if test_config is not None:
@@ -34,7 +35,7 @@ def create_app(test_config=None):
     cache.init_app(app)
 
     with app.app_context():
-        from database import models  # noqa: F401
+        import resumeverifier.models  # noqa: F401
         db.create_all()
 
     _register_converters(app)

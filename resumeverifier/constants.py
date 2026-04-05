@@ -127,6 +127,15 @@ VERIFICATION_RESPOND_SCHEMA = {
     "additionalProperties": False,
 }
 
+VERIFICATION_EXPIRE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "status": {"type": "string", "enum": ["expired"]},
+    },
+    "required": ["status"],
+    "additionalProperties": False,
+}
+
 SHARE_CREATE_SCHEMA = {
     "type": "object",
     "properties": {

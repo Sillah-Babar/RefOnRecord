@@ -116,39 +116,48 @@ class TestCreateProject:
 
 
 class TestGetProject:
-    """GET /api/projects/<project>/"""
+    """GET /api/users/<user>/projects/<project>/"""
 
     def test_get_own_project(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
-        resp = client.get(f"/api/projects/{pid}/", headers=auth_headers)
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers
+        )
         assert resp.status_code == 200
         assert "links" in resp.get_json()
 
     def test_get_cached(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
-        client.get(f"/api/projects/{pid}/", headers=auth_headers)
-        resp = client.get(f"/api/projects/{pid}/", headers=auth_headers)
+        client.get(f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers)
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers
+        )
         assert resp.status_code == 200
 
     def test_get_forbidden(
         self, client, app, db, registered_user, second_auth_headers
     ):
         pid = make_project(app, db, registered_user)
-        resp = client.get(f"/api/projects/{pid}/", headers=second_auth_headers)
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/",
+            headers=second_auth_headers,
+        )
         assert resp.status_code == 403
 
-    def test_get_not_found(self, client, auth_headers):
-        resp = client.get("/api/projects/99999/", headers=auth_headers)
+    def test_get_not_found(self, client, registered_user, auth_headers):
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/99999/", headers=auth_headers
+        )
         assert resp.status_code == 404
 
 
 class TestUpdateProject:
-    """PUT /api/projects/<project>/"""
+    """PUT /api/users/<user>/projects/<project>/"""
 
     def test_update_name(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         resp = client.put(
-            f"/api/projects/{pid}/",
+            f"/api/users/{registered_user}/projects/{pid}/",
             json={"project_name": "Updated Name"},
             headers=auth_headers,
         )
@@ -157,13 +166,17 @@ class TestUpdateProject:
 
     def test_update_clears_cache(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
-        client.get(f"/api/projects/{pid}/", headers=auth_headers)  # populate cache
+        client.get(
+            f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers
+        )
         client.put(
-            f"/api/projects/{pid}/",
+            f"/api/users/{registered_user}/projects/{pid}/",
             json={"project_name": "New"},
             headers=auth_headers,
         )
-        resp = client.get(f"/api/projects/{pid}/", headers=auth_headers)
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers
+        )
         assert resp.get_json()["project_name"] == "New"
 
     def test_update_forbidden(
@@ -171,7 +184,7 @@ class TestUpdateProject:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.put(
-            f"/api/projects/{pid}/",
+            f"/api/users/{registered_user}/projects/{pid}/",
             json={"project_name": "X"},
             headers=second_auth_headers,
         )
@@ -182,7 +195,9 @@ class TestUpdateProject:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.put(
-            f"/api/projects/{pid}/", json={}, headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/",
+            json={},
+            headers=auth_headers,
         )
         assert resp.status_code == 400
 
@@ -191,7 +206,7 @@ class TestUpdateProject:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.put(
-            f"/api/projects/{pid}/",
+            f"/api/users/{registered_user}/projects/{pid}/",
             data="bad",
             content_type="text/plain",
             headers=auth_headers,
@@ -200,21 +215,27 @@ class TestUpdateProject:
 
 
 class TestDeleteProject:
-    """DELETE /api/projects/<project>/"""
+    """DELETE /api/users/<user>/projects/<project>/"""
 
     def test_delete_own_project(
         self, client, app, db, registered_user, auth_headers
     ):
         pid = make_project(app, db, registered_user)
-        resp = client.delete(f"/api/projects/{pid}/", headers=auth_headers)
+        resp = client.delete(
+            f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers
+        )
         assert resp.status_code == 204
 
     def test_delete_not_found_after(
         self, client, app, db, registered_user, auth_headers
     ):
         pid = make_project(app, db, registered_user)
-        client.delete(f"/api/projects/{pid}/", headers=auth_headers)
-        resp = client.get(f"/api/projects/{pid}/", headers=auth_headers)
+        client.delete(
+            f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers
+        )
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/", headers=auth_headers
+        )
         assert resp.status_code == 404
 
     def test_delete_forbidden(
@@ -222,6 +243,7 @@ class TestDeleteProject:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.delete(
-            f"/api/projects/{pid}/", headers=second_auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/",
+            headers=second_auth_headers,
         )
         assert resp.status_code == 403

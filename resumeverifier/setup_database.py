@@ -5,7 +5,7 @@ Creates all database tables using the Flask application factory so that
 Flask-SQLAlchemy models are registered correctly.
 
 Usage (from project root):
-    python database/setup_database.py
+    python resumeverifier/setup_database.py
 """
 import sys
 import os
@@ -36,15 +36,13 @@ def setup_database():
         db.drop_all()
         print("Creating all tables...")
         db.create_all()
-        tables = db.engine.table_names() if hasattr(db.engine, "table_names") else list(
-            db.metadata.tables.keys()
-        )
+        tables = list(db.metadata.tables.keys())
         print("\nTables created:")
         for table in tables:
-            print(f"  ✓ {table}")
+            print(f"  - {table}")
 
     print("\nDatabase setup completed successfully!")
-    print("Next step: run 'python database/populate_database.py' to add sample data.")
+    print("Next step: run 'python resumeverifier/populate_database.py' to add sample data.")
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ class TestVerificationExpiredToken:
         resp = client.post(
             f"/api/verification-requests/{rid}/respond/",
             json={"verification_token": token, "status": "verified"},
+            headers={"X-API-Key": "test-m2m-key"},
         )
         assert resp.status_code == 400
         assert "expired" in resp.get_json()["error"].lower()

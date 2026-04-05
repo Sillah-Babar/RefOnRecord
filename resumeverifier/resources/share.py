@@ -1,11 +1,18 @@
-"""Share link endpoints: GET/POST /api/projects/<project>/shares/, GET /api/shares/<token>/, DELETE /api/shares/<share>/"""
+"""
+Share link endpoints:
+- GET/POST /api/users/<user>/projects/<project>/shares/ — list and create share links
+- GET /api/shares/<share_token>/ — public resume view (no auth required)
+- DELETE /api/users/<user>/projects/<project>/shares/<share>/ — delete a share link
+
+The public share view is cached by share_token. Deletions invalidate the cache.
+"""
 from datetime import datetime
 
-from flask import g, request, jsonify
+from flask import g, request, jsonify, url_for
 from flask.views import MethodView
 from jsonschema import validate, ValidationError, FormatChecker
 
-from resumeverifier import db, cache
+from resumeverifier.extensions import db, cache
 from resumeverifier.auth import require_auth
 from resumeverifier.constants import (
     SHARE_CREATE_SCHEMA,
@@ -19,24 +26,55 @@ from resumeverifier.resources import api_blueprint
 _CACHE_TIMEOUT = 300
 
 
-def _share_cache_key(share_token):
-    return f"share_{share_token}"
+@cache.memoize(timeout=_CACHE_TIMEOUT)
+def _share_public_data(share_token):
+    """
+    Return public share view data, cached by share_token string.
+
+    Returns None if the share link does not exist or has expired.
+    """
+    share = ShareLink.query.filter_by(share_token=share_token).first()
+    if share is None:
+        return None
+    if share.expires_at and share.expires_at < datetime.utcnow():
+        return None
+    project = share.project
+    return {
+        "project": project.serialize(),
+        "experiences": [e.serialize() for e in project.experiences],
+        "share": share.serialize(),
+    }
 
 
 class ProjectShareCollection(MethodView):
-    """List and create share links for a project."""
+    """
+    List and create share links for a resume project.
+
+    GET returns all share links owned by the authenticated user.
+    POST creates a new share link and returns 201 with a Location header.
+    """
 
     decorators = [require_auth]
 
-    def get(self, project):
-        """List share links."""
+    def get(self, user, project):
+        """
+        List all share links for the given project.
+
+        Requires the authenticated user to own the project.
+        """
         if g.current_user.user_id != project.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
         shares = [s.serialize() for s in project.share_links]
         return jsonify(shares), HTTP_200_OK
 
-    def post(self, project):
-        """Create a share link."""
+    def post(self, user, project):
+        """
+        Create a new share link for the given project.
+
+        Validates the JSON body against SHARE_CREATE_SCHEMA.
+        Parses the optional expires_at ISO datetime string.
+        Returns 201 with a Location header pointing to the public share URL.
+        """
         if g.current_user.user_id != project.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
 
@@ -68,20 +106,26 @@ class ProjectShareCollection(MethodView):
 
         response = jsonify(share.serialize())
         response.status_code = HTTP_201_CREATED
-        response.headers["Location"] = f"/api/shares/{share.share_token}/"
+        response.headers["Location"] = url_for("api.public_share", share_token=share.share_token)
         return response
 
 
 class PublicShareResource(MethodView):
-    """Public resume view — no auth required."""
+    """
+    Public resume view — no authentication required.
+
+    Increments the view counter and returns the serialized project, its
+    experiences, and the share link metadata. Results are cached by token.
+    Returns 404 if the token is unknown or the link has expired.
+    """
 
     def get(self, share_token):
-        """Get shared resume by token."""
-        cache_key = _share_cache_key(share_token)
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return jsonify(cached), HTTP_200_OK
+        """
+        Retrieve a shared resume by its token.
 
+        Checks the memoized cache first. On a miss, fetches from the DB,
+        increments the view counter, then stores in cache.
+        """
         share = ShareLink.query.filter_by(share_token=share_token).first()
         if share is None:
             return error_response("Share link not found", HTTP_404_NOT_FOUND)
@@ -92,34 +136,41 @@ class PublicShareResource(MethodView):
         share.view_count += 1
         db.session.commit()
 
-        project = share.project
-        data = {
-            "project": project.serialize(),
-            "experiences": [e.serialize() for e in project.experiences],
-            "share": share.serialize(),
-        }
-        cache.set(cache_key, data, timeout=_CACHE_TIMEOUT)
+        # Invalidate stale memoize entry then re-fetch fresh data
+        cache.delete_memoized(_share_public_data, share_token)
+        data = _share_public_data(share_token)
+        if data is None:
+            return error_response("Share link not found", HTTP_404_NOT_FOUND)
         return jsonify(data), HTTP_200_OK
 
 
 class ShareDeleteResource(MethodView):
-    """Delete a share link (owner only)."""
+    """
+    Delete a share link (owner only).
+
+    Invalidates the public share cache entry so stale data is not served.
+    """
 
     decorators = [require_auth]
 
-    def delete(self, share):
-        """Delete share link."""
+    def delete(self, user, project, share):
+        """
+        Delete the given share link.
+
+        Requires the authenticated user to own the share link's project.
+        Invalidates the memoized cache entry for the share token.
+        """
         if g.current_user.user_id != share.project.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
 
-        cache.delete(_share_cache_key(share.share_token))
+        cache.delete_memoized(_share_public_data, share.share_token)
         db.session.delete(share)
         db.session.commit()
         return "", HTTP_204_NO_CONTENT
 
 
 api_blueprint.add_url_rule(
-    "/projects/<project:project>/shares/",
+    "/users/<user:user>/projects/<project:project>/shares/",
     view_func=ProjectShareCollection.as_view("project_share_collection"),
     methods=["GET", "POST"],
 )
@@ -129,7 +180,7 @@ api_blueprint.add_url_rule(
     methods=["GET"],
 )
 api_blueprint.add_url_rule(
-    "/shares/<share:share>/",
+    "/users/<user:user>/projects/<project:project>/shares/<share:share>/",
     view_func=ShareDeleteResource.as_view("share_delete"),
     methods=["DELETE"],
 )

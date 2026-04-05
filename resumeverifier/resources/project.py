@@ -1,9 +1,16 @@
-"""Project endpoints: GET/POST /api/users/<user>/projects/, GET/PUT/DELETE /api/projects/<project>/"""
-from flask import g, request, jsonify
+"""
+Project endpoints:
+- GET/POST /api/users/<user>/projects/ — list and create resume projects
+- GET/PUT/DELETE /api/users/<user>/projects/<project>/ — read, update, delete a project
+
+All mutating operations invalidate the relevant cache entries so subsequent
+reads reflect the latest state.
+"""
+from flask import g, request, jsonify, url_for
 from flask.views import MethodView
 from jsonschema import validate, ValidationError, FormatChecker
 
-from resumeverifier import db, cache
+from resumeverifier.extensions import db, cache
 from resumeverifier.auth import require_auth
 from resumeverifier.constants import (
     PROJECT_CREATE_SCHEMA, PROJECT_UPDATE_SCHEMA,
@@ -17,35 +24,51 @@ from resumeverifier.resources import api_blueprint
 _CACHE_TIMEOUT = 300
 
 
-def _project_cache_key(project_id):
-    return f"project_{project_id}"
+@cache.memoize(timeout=_CACHE_TIMEOUT)
+def _project_data(project_id):
+    """Return serialized project data, cached by project_id."""
+    project = db.session.get(ResumeProject, project_id)
+    return project.serialize()
 
 
-def _user_projects_cache_key(user_id):
-    return f"user_projects_{user_id}"
+@cache.memoize(timeout=_CACHE_TIMEOUT)
+def _user_projects_data(user_id):
+    """Return list of serialized projects for a user, cached by user_id."""
+    from resumeverifier.models import User  # pylint: disable=import-outside-toplevel
+    user = db.session.get(User, user_id)
+    return [p.serialize() for p in user.projects]
 
 
 class UserProjectCollection(MethodView):
-    """List and create projects for a user."""
+    """
+    List and create resume projects for a specific user.
+
+    GET returns all projects owned by the authenticated user.
+    POST creates a new project and returns 201 with a Location header.
+    """
 
     decorators = [require_auth]
 
     def get(self, user):
-        """List all projects."""
+        """
+        List all resume projects for the given user.
+
+        Requires the authenticated user to be the owner.
+        Results are cached by user_id.
+        """
         if g.current_user.user_id != user.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
 
-        cache_key = _user_projects_cache_key(user.user_id)
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return jsonify(cached), HTTP_200_OK
-
-        projects = [p.serialize() for p in user.projects]
-        cache.set(cache_key, projects, timeout=_CACHE_TIMEOUT)
-        return jsonify(projects), HTTP_200_OK
+        return jsonify(_user_projects_data(user.user_id)), HTTP_200_OK
 
     def post(self, user):
-        """Create a new project."""
+        """
+        Create a new resume project for the given user.
+
+        Validates the JSON body against PROJECT_CREATE_SCHEMA.
+        Invalidates the user's project list cache on success.
+        Returns 201 with a Location header pointing to the new resource.
+        """
         if g.current_user.user_id != user.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
 
@@ -72,35 +95,43 @@ class UserProjectCollection(MethodView):
         )
         db.session.add(project)
         db.session.commit()
-        cache.delete(_user_projects_cache_key(user.user_id))
+        cache.delete_memoized(_user_projects_data, user.user_id)
 
         response = jsonify(project.serialize())
         response.status_code = HTTP_201_CREATED
-        response.headers["Location"] = f"/api/projects/{project.project_id}/"
+        response.headers["Location"] = url_for("api.project_resource", user=user, project=project)
         return response
 
 
 class ProjectResource(MethodView):
-    """Read, update, delete a single project."""
+    """
+    Read, update, and delete a single resume project.
+
+    All operations require the authenticated user to be the project owner.
+    GET results are cached by project_id.
+    PUT and DELETE invalidate the project and user-level caches.
+    """
 
     decorators = [require_auth]
 
-    def get(self, project):
-        """Get project by ID."""
+    def get(self, user, project):
+        """
+        Retrieve a project by its ID.
+
+        Returns cached data if available; otherwise serializes and caches.
+        """
         if g.current_user.user_id != project.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
 
-        cache_key = _project_cache_key(project.project_id)
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return jsonify(cached), HTTP_200_OK
+        return jsonify(_project_data(project.project_id)), HTTP_200_OK
 
-        data = project.serialize()
-        cache.set(cache_key, data, timeout=_CACHE_TIMEOUT)
-        return jsonify(data), HTTP_200_OK
+    def put(self, user, project):
+        """
+        Update one or more fields of a project.
 
-    def put(self, project):
-        """Update project."""
+        Validates the JSON body against PROJECT_UPDATE_SCHEMA.
+        Invalidates the project-level and user-level project list caches.
+        """
         if g.current_user.user_id != project.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
 
@@ -123,17 +154,22 @@ class ProjectResource(MethodView):
                 setattr(project, field, data[field])
 
         db.session.commit()
-        cache.delete(_project_cache_key(project.project_id))
-        cache.delete(_user_projects_cache_key(project.user_id))
+        cache.delete_memoized(_project_data, project.project_id)
+        cache.delete_memoized(_user_projects_data, project.user_id)
         return jsonify(project.serialize()), HTTP_200_OK
 
-    def delete(self, project):
-        """Delete project."""
+    def delete(self, user, project):
+        """
+        Delete a project and all its child resources (cascade).
+
+        Invalidates the project-level and user-level project list caches
+        before deleting so stale entries are not served.
+        """
         if g.current_user.user_id != project.user_id:
             return error_response("Forbidden", HTTP_403_FORBIDDEN)
 
-        cache.delete(_project_cache_key(project.project_id))
-        cache.delete(_user_projects_cache_key(project.user_id))
+        cache.delete_memoized(_project_data, project.project_id)
+        cache.delete_memoized(_user_projects_data, project.user_id)
         db.session.delete(project)
         db.session.commit()
         return "", HTTP_204_NO_CONTENT
@@ -145,7 +181,7 @@ api_blueprint.add_url_rule(
     methods=["GET", "POST"],
 )
 api_blueprint.add_url_rule(
-    "/projects/<project:project>/",
+    "/users/<user:user>/projects/<project:project>/",
     view_func=ProjectResource.as_view("project_resource"),
     methods=["GET", "PUT", "DELETE"],
 )

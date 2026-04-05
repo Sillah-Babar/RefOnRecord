@@ -3,12 +3,13 @@ from tests.conftest import make_project, make_experience
 
 
 class TestListExperiences:
-    """GET /api/projects/<project>/experiences/"""
+    """GET /api/users/<user>/projects/<project>/experiences/"""
 
     def test_list_empty(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         resp = client.get(
-            f"/api/projects/{pid}/experiences/", headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert resp.get_json() == []
@@ -20,7 +21,8 @@ class TestListExperiences:
         make_experience(app, db, pid)
         make_experience(app, db, pid)
         resp = client.get(
-            f"/api/projects/{pid}/experiences/", headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert len(resp.get_json()) == 2
@@ -28,8 +30,14 @@ class TestListExperiences:
     def test_list_cached(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         make_experience(app, db, pid)
-        r1 = client.get(f"/api/projects/{pid}/experiences/", headers=auth_headers)
-        r2 = client.get(f"/api/projects/{pid}/experiences/", headers=auth_headers)
+        r1 = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
+            headers=auth_headers,
+        )
+        r2 = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
+            headers=auth_headers,
+        )
         assert r1.status_code == r2.status_code == 200
 
     def test_list_forbidden(
@@ -37,13 +45,14 @@ class TestListExperiences:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.get(
-            f"/api/projects/{pid}/experiences/", headers=second_auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
+            headers=second_auth_headers,
         )
         assert resp.status_code == 403
 
 
 class TestCreateExperience:
-    """POST /api/projects/<project>/experiences/"""
+    """POST /api/users/<user>/projects/<project>/experiences/"""
 
     def _payload(self):
         return {
@@ -56,7 +65,7 @@ class TestCreateExperience:
     def test_create_success(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/experiences/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
             json=self._payload(),
             headers=auth_headers,
         )
@@ -72,7 +81,7 @@ class TestCreateExperience:
         pid = make_project(app, db, registered_user)
         payload = {**self._payload(), "end_date": "2022-12-31"}
         resp = client.post(
-            f"/api/projects/{pid}/experiences/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
             json=payload,
             headers=auth_headers,
         )
@@ -85,7 +94,7 @@ class TestCreateExperience:
         pid = make_project(app, db, registered_user)
         payload = {**self._payload(), "start_date": "2022-01-01", "end_date": "2021-01-01"}
         resp = client.post(
-            f"/api/projects/{pid}/experiences/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
             json=payload,
             headers=auth_headers,
         )
@@ -96,7 +105,7 @@ class TestCreateExperience:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/experiences/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
             json={"company_name": "X"},
             headers=auth_headers,
         )
@@ -107,7 +116,7 @@ class TestCreateExperience:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/experiences/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
             data="bad",
             content_type="text/plain",
             headers=auth_headers,
@@ -119,7 +128,7 @@ class TestCreateExperience:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/experiences/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
             json=self._payload(),
             headers=second_auth_headers,
         )
@@ -131,7 +140,7 @@ class TestCreateExperience:
         pid = make_project(app, db, registered_user)
         payload = {**self._payload(), "start_date": "not-a-date"}
         resp = client.post(
-            f"/api/projects/{pid}/experiences/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/",
             json=payload,
             headers=auth_headers,
         )
@@ -139,22 +148,31 @@ class TestCreateExperience:
 
 
 class TestGetExperience:
-    """GET /api/experiences/<experience>/"""
+    """GET /api/users/<user>/projects/<project>/experiences/<experience>/"""
 
     def test_get_own_experience(
         self, client, app, db, registered_user, auth_headers
     ):
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
-        resp = client.get(f"/api/experiences/{eid}/", headers=auth_headers)
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
         assert "links" in resp.get_json()
 
     def test_get_cached(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
-        client.get(f"/api/experiences/{eid}/", headers=auth_headers)
-        resp = client.get(f"/api/experiences/{eid}/", headers=auth_headers)
+        client.get(
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
+            headers=auth_headers,
+        )
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
+            headers=auth_headers,
+        )
         assert resp.status_code == 200
 
     def test_get_forbidden(
@@ -162,16 +180,22 @@ class TestGetExperience:
     ):
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
-        resp = client.get(f"/api/experiences/{eid}/", headers=second_auth_headers)
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
+            headers=second_auth_headers,
+        )
         assert resp.status_code == 403
 
-    def test_get_not_found(self, client, auth_headers):
-        resp = client.get("/api/experiences/99999/", headers=auth_headers)
+    def test_get_not_found(self, client, registered_user, auth_headers):
+        resp = client.get(
+            f"/api/users/{registered_user}/projects/99999/experiences/99999/",
+            headers=auth_headers,
+        )
         assert resp.status_code == 404
 
 
 class TestUpdateExperience:
-    """PUT /api/experiences/<experience>/"""
+    """PUT /api/users/<user>/projects/<project>/experiences/<experience>/"""
 
     def test_update_description(
         self, client, app, db, registered_user, auth_headers
@@ -179,7 +203,7 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
             json={"description": "Updated description."},
             headers=auth_headers,
         )
@@ -192,7 +216,7 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
             json={"end_date": None},
             headers=auth_headers,
         )
@@ -205,7 +229,7 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
             json={"start_date": "2025-01-01", "end_date": "2020-01-01"},
             headers=auth_headers,
         )
@@ -217,7 +241,7 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
             json={"description": "hack"},
             headers=second_auth_headers,
         )
@@ -227,7 +251,9 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/", json={}, headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
+            json={},
+            headers=auth_headers,
         )
         assert resp.status_code == 400
 
@@ -237,7 +263,7 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
             data="bad",
             content_type="text/plain",
             headers=auth_headers,
@@ -250,7 +276,7 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
             json={"start_date": "not-a-date"},
             headers=auth_headers,
         )
@@ -262,7 +288,7 @@ class TestUpdateExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.put(
-            f"/api/experiences/{eid}/",
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
             json={"end_date": "bad-date"},
             headers=auth_headers,
         )
@@ -270,12 +296,15 @@ class TestUpdateExperience:
 
 
 class TestDeleteExperience:
-    """DELETE /api/experiences/<experience>/"""
+    """DELETE /api/users/<user>/projects/<project>/experiences/<experience>/"""
 
     def test_delete_own(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
-        resp = client.delete(f"/api/experiences/{eid}/", headers=auth_headers)
+        resp = client.delete(
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
+            headers=auth_headers,
+        )
         assert resp.status_code == 204
 
     def test_delete_forbidden(
@@ -284,6 +313,7 @@ class TestDeleteExperience:
         pid = make_project(app, db, registered_user)
         eid = make_experience(app, db, pid)
         resp = client.delete(
-            f"/api/experiences/{eid}/", headers=second_auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/experiences/{eid}/",
+            headers=second_auth_headers,
         )
         assert resp.status_code == 403

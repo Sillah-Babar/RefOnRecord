@@ -2,10 +2,10 @@
 from tests.conftest import make_project, make_experience
 
 
-def make_share(client, project_id, auth_headers, body=None):
+def make_share(client, user_id, project_id, auth_headers, body=None):
     """Helper: create a share link and return the response JSON."""
     resp = client.post(
-        f"/api/projects/{project_id}/shares/",
+        f"/api/users/{user_id}/projects/{project_id}/shares/",
         json=body or {},
         headers=auth_headers,
     )
@@ -14,12 +14,13 @@ def make_share(client, project_id, auth_headers, body=None):
 
 
 class TestListShares:
-    """GET /api/projects/<project>/shares/"""
+    """GET /api/users/<user>/projects/<project>/shares/"""
 
     def test_list_empty(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         resp = client.get(
-            f"/api/projects/{pid}/shares/", headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert resp.get_json() == []
@@ -28,10 +29,11 @@ class TestListShares:
         self, client, app, db, registered_user, auth_headers
     ):
         pid = make_project(app, db, registered_user)
-        make_share(client, pid, auth_headers)
-        make_share(client, pid, auth_headers)
+        make_share(client, registered_user, pid, auth_headers)
+        make_share(client, registered_user, pid, auth_headers)
         resp = client.get(
-            f"/api/projects/{pid}/shares/", headers=auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
+            headers=auth_headers,
         )
         assert resp.status_code == 200
         assert len(resp.get_json()) == 2
@@ -41,18 +43,19 @@ class TestListShares:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.get(
-            f"/api/projects/{pid}/shares/", headers=second_auth_headers
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
+            headers=second_auth_headers,
         )
         assert resp.status_code == 403
 
 
 class TestCreateShare:
-    """POST /api/projects/<project>/shares/"""
+    """POST /api/users/<user>/projects/<project>/shares/"""
 
     def test_create_minimal(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/shares/",
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
             json={},
             headers=auth_headers,
         )
@@ -67,7 +70,7 @@ class TestCreateShare:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/shares/",
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
             json={
                 "recipient_email": "recruiter@company.com",
                 "access_type": "edit",
@@ -87,7 +90,7 @@ class TestCreateShare:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/shares/",
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
             json={"access_type": "admin"},
             headers=auth_headers,
         )
@@ -98,7 +101,7 @@ class TestCreateShare:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/shares/",
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
             json={"expires_at": "not-a-datetime"},
             headers=auth_headers,
         )
@@ -109,7 +112,7 @@ class TestCreateShare:
     ):
         pid = make_project(app, db, registered_user)
         resp = client.post(
-            f"/api/projects/{pid}/shares/",
+            f"/api/users/{registered_user}/projects/{pid}/shares/",
             json={},
             headers=second_auth_headers,
         )
@@ -117,14 +120,14 @@ class TestCreateShare:
 
 
 class TestPublicShareView:
-    """GET /api/shares/<share_token>/"""
+    """GET /api/shares/<share_token>/ (public, stays flat)"""
 
     def test_public_view_success(
         self, client, app, db, registered_user, auth_headers
     ):
         pid = make_project(app, db, registered_user)
         make_experience(app, db, pid)
-        share_data = make_share(client, pid, auth_headers)
+        share_data = make_share(client, registered_user, pid, auth_headers)
         token = share_data["share_token"]
 
         resp = client.get(f"/api/shares/{token}/")
@@ -138,7 +141,7 @@ class TestPublicShareView:
         self, client, app, db, registered_user, auth_headers
     ):
         pid = make_project(app, db, registered_user)
-        share_data = make_share(client, pid, auth_headers)
+        share_data = make_share(client, registered_user, pid, auth_headers)
         token = share_data["share_token"]
 
         client.get(f"/api/shares/{token}/")
@@ -154,7 +157,7 @@ class TestPublicShareView:
     ):
         pid = make_project(app, db, registered_user)
         share_data = make_share(
-            client, pid, auth_headers,
+            client, registered_user, pid, auth_headers,
             body={"expires_at": "2000-01-01T00:00:00"},
         )
         token = share_data["share_token"]
@@ -163,27 +166,33 @@ class TestPublicShareView:
 
 
 class TestDeleteShare:
-    """DELETE /api/shares/<share>/"""
+    """DELETE /api/users/<user>/projects/<project>/shares/<share>/"""
 
     def test_delete_own(self, client, app, db, registered_user, auth_headers):
         pid = make_project(app, db, registered_user)
-        share_data = make_share(client, pid, auth_headers)
+        share_data = make_share(client, registered_user, pid, auth_headers)
         share_id = share_data["share_id"]
 
-        resp = client.delete(f"/api/shares/{share_id}/", headers=auth_headers)
+        resp = client.delete(
+            f"/api/users/{registered_user}/projects/{pid}/shares/{share_id}/",
+            headers=auth_headers,
+        )
         assert resp.status_code == 204
 
     def test_delete_forbidden(
         self, client, app, db, registered_user, auth_headers, second_auth_headers
     ):
         pid = make_project(app, db, registered_user)
-        share_data = make_share(client, pid, auth_headers)
+        share_data = make_share(client, registered_user, pid, auth_headers)
         resp = client.delete(
-            f"/api/shares/{share_data['share_id']}/",
+            f"/api/users/{registered_user}/projects/{pid}/shares/{share_data['share_id']}/",
             headers=second_auth_headers,
         )
         assert resp.status_code == 403
 
-    def test_delete_not_found(self, client, auth_headers):
-        resp = client.delete("/api/shares/99999/", headers=auth_headers)
+    def test_delete_not_found(self, client, registered_user, auth_headers):
+        resp = client.delete(
+            f"/api/users/{registered_user}/projects/99999/shares/99999/",
+            headers=auth_headers,
+        )
         assert resp.status_code == 404

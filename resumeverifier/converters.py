@@ -10,7 +10,7 @@ class _IntModelConverter(BaseConverter):
 
     def to_python(self, value):
         """Fetch model by PK; raise 404 if missing."""
-        from resumeverifier import db  # pylint: disable=import-outside-toplevel
+        from resumeverifier.extensions import db  # pylint: disable=import-outside-toplevel
 
         obj = db.session.get(self.model_class, int(value))
         if obj is None:

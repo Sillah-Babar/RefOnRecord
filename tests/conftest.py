@@ -7,8 +7,8 @@ import pytest
 
 from resumeverifier import create_app
 from resumeverifier.extensions import db as _db
-from resumeverifier.auth import hash_password
-from resumeverifier.models import User, ResumeProject, Experience, Session
+from resumeverifier.auth import hash_password, create_token
+from resumeverifier.models import User, ResumeProject, Experience
 
 
 @pytest.fixture(scope="session")
@@ -18,8 +18,9 @@ def app():
         {
             "TESTING": True,
             "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
-            "CACHE_TYPE": "NullCache",
+            "CACHE_TYPE": "SimpleCache",
             "WTF_CSRF_ENABLED": False,
+            "M2M_API_KEYS": {"test-m2m-key"},
         }
     )
     return application
@@ -28,11 +29,13 @@ def app():
 @pytest.fixture(scope="function")
 def db(app):
     """Provide a clean database for every test function."""
+    from resumeverifier.extensions import cache as _cache  # pylint: disable=import-outside-toplevel
     with app.app_context():
         _db.create_all()
         yield _db
         _db.session.remove()
         _db.drop_all()
+        _cache.clear()  # Flush memoized cache so stale entries don't bleed across tests
 
 
 @pytest.fixture(scope="function")
@@ -101,12 +104,10 @@ def second_registered_user(db, app):
 
 
 def _make_token(app, db, user_id):
-    """Insert a session token for the given user and return the token string."""
+    """Create a JWT token for the given user and return the token string."""
     with app.app_context():
-        session = Session(user_id=user_id, token=Session.generate_token())
-        db.session.add(session)
-        db.session.commit()
-        return session.token
+        token, _ = create_token(user_id)
+        return token
 
 
 @pytest.fixture(scope="function")
@@ -176,7 +177,7 @@ def make_vr_direct(client, app, db, user_id, auth_headers):
     eid = make_experience(app, db, pid)
     with patch("resumeverifier.email_service.send_verification_email"):
         resp = client.post(
-            f"/api/experiences/{eid}/verification-requests/",
+            f"/api/users/{user_id}/projects/{pid}/experiences/{eid}/verification-requests/",
             json={
                 "verifier_name": "Boss",
                 "verifier_position": "Manager",
