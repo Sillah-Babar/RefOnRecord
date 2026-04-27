@@ -133,17 +133,49 @@ curl -X POST -H "X-Service-Key: <key>" http://localhost:5001/api/jobs/reminders/
 curl -X POST -H "X-Service-Key: <key>" http://localhost:5001/api/jobs/expiry/run
 ```
 
-## Code Quality
+## Running the tests
+
+The test suite uses **pytest** and covers all database helpers, every Flask
+endpoint (auth enforcement, response shape, pagination, 400 errors), and the
+email dry-run path.
+
+```bash
+cd reminder_service
+pip install -r requirements.txt
+pip install pytest
+pytest test_service.py -v
+```
+
+No running API or email credentials are needed — all external calls are
+mocked and the database uses a temporary file created per test.
+
+## Code quality
 
 ```bash
 pylint service.py --disable=C0114
 ```
 
+## API documentation (Swagger UI)
+
+Serve from the `reminder_service/` directory so that Swagger UI can fetch
+`openapi.yaml` from the server root:
+
+```bash
+cd reminder_service
+python3 -m http.server 8082
+```
+
+Then open: http://localhost:8082/docs/
+
 ## Files
 
 ```
 reminder_service/
-├── service.py       — main service: scheduler jobs + Flask API
-├── requirements.txt — Python dependencies
-└── README.md        — this file
+├── service.py        — main service: scheduler jobs + Flask API
+├── test_service.py   — pytest test suite (42 tests)
+├── requirements.txt  — Python dependencies
+├── openapi.yaml      — OpenAPI 3.0.3 spec
+├── docs/
+│   └── index.html    — Swagger UI (loads /openapi.yaml from server root)
+└── README.md         — this file
 ```
