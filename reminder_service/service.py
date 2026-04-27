@@ -53,6 +53,27 @@ Usage
   pip install -r requirements.txt
   export M2M_API_KEY=<key> SERVICE_API_KEY=<key>
   python service.py
+
+Sources and attribution
+------------------------
+All business logic in this file was written by the project team:
+  - SQLite reminder-tracking helpers (_get_db, init_db, has_been_reminded,
+    record_reminder, get_all_reminders, count_reminders)
+  - M2M API client helpers (_api_get, _api_patch)
+  - Email composition and dispatch (send_reminder_email)
+  - Scheduled job implementations (send_reminders, expire_stale)
+  - Flask REST API endpoints and the require_service_key auth decorator
+
+The following third-party libraries are used without modification:
+  - Flask        (BSD-3-Clause) — HTTP server and routing
+  - Flask-CORS   (MIT)          — CORS headers on REST responses
+  - APScheduler  (MIT)          — BackgroundScheduler for timed jobs
+  - requests     (Apache-2.0)   — HTTP client for API calls and Maileroo
+  - python-dotenv (BSD-3-Clause)— .env file loading
+
+The Maileroo transactional email service is a third-party external API;
+the HTTP call to it (requests.post to MAILEROO_SEND_URL) is our code, but
+the underlying email delivery infrastructure belongs to Maileroo.
 """
 
 import os
@@ -117,9 +138,15 @@ scheduler = BackgroundScheduler()
 
 def _get_db():
     """
-    Return a connection to the local reminder-tracking SQLite database.
+    Open and return a connection to the local reminder-tracking SQLite database.
 
-    :returns: sqlite3.Connection with row_factory set to sqlite3.Row
+    The connection uses sqlite3.Row as its row_factory so that rows can be
+    accessed by column name as well as by index.
+
+    :returns: sqlite3.Connection — open connection to REMINDER_DB
+    :raises sqlite3.OperationalError: if the database file path is invalid or
+        the filesystem is not writable; callers should let this propagate so
+        the problem is visible in logs rather than silently ignored.
     """
     conn = sqlite3.connect(REMINDER_DB)
     conn.row_factory = sqlite3.Row
@@ -130,9 +157,18 @@ def init_db():
     """
     Create the sent_reminders table if it does not already exist.
 
-    Schema:
-      request_id  INTEGER PRIMARY KEY — the main-API verification request id
-      reminded_at TEXT                — ISO-8601 UTC timestamp
+    Safe to call multiple times (CREATE TABLE IF NOT EXISTS).  Called once
+    at service startup before the scheduler is started.
+
+    Schema
+    ------
+      request_id  INTEGER PRIMARY KEY — verification request id from main API
+      reminded_at TEXT NOT NULL       — ISO-8601 UTC timestamp of the reminder
+
+    :returns: None
+    :raises sqlite3.OperationalError: if the database file cannot be opened
+        or the CREATE TABLE statement fails (e.g. disk full).  The exception
+        is not caught here; it will abort startup so the operator is aware.
     """
     with _get_db() as conn:
         conn.execute("""
@@ -147,10 +183,17 @@ def init_db():
 
 def has_been_reminded(request_id):
     """
-    Return True if a reminder email has already been sent for this request.
+    Check whether a reminder email has already been sent for this request.
+
+    Used by send_reminders() to skip requests that were handled in a
+    previous scheduler run, preventing duplicate emails.
 
     :param request_id: int — verification request id from the main API
-    :returns: bool
+    :returns: bool — True if a record exists in sent_reminders, False otherwise
+    :raises sqlite3.OperationalError: if the database cannot be read (e.g.
+        the table was dropped or the file is corrupted).  The caller
+        (send_reminders) catches broad exceptions per request, so a single
+        DB failure will not abort the entire job run.
     """
     with _get_db() as conn:
         row = conn.execute(
@@ -161,9 +204,16 @@ def has_been_reminded(request_id):
 
 def record_reminder(request_id):
     """
-    Persist that a reminder was sent so it will not be sent again.
+    Persist a record that a reminder email was sent for this request.
+
+    Uses INSERT OR IGNORE so calling this function twice with the same
+    request_id is safe and idempotent — the second call is a no-op.
 
     :param request_id: int — verification request id from the main API
+    :returns: None
+    :raises sqlite3.OperationalError: if the INSERT fails due to a locked
+        database or disk error.  The caller (send_reminders) catches broad
+        exceptions and logs the failure without re-raising.
     """
     with _get_db() as conn:
         conn.execute(
@@ -175,11 +225,17 @@ def record_reminder(request_id):
 
 def get_all_reminders(offset=0, limit=50):
     """
-    Return a list of all reminder records from the local SQLite database.
+    Return a paginated list of all reminder records from the local database.
 
-    :param offset: int — pagination offset (default 0)
-    :param limit:  int — maximum rows to return (default 50)
-    :returns: list of dict with keys request_id, reminded_at
+    Results are ordered by reminded_at descending (most recent first).
+
+    :param offset: int — number of rows to skip (default 0); negative values
+        are treated as 0 by the caller before this function is invoked.
+    :param limit:  int — maximum number of rows to return (default 50);
+        the REST endpoint caps this at 200.
+    :returns: list[dict] — each dict has keys ``request_id`` (int) and
+        ``reminded_at`` (str, ISO-8601 UTC).  Empty list if no records exist.
+    :raises sqlite3.OperationalError: if the database file cannot be read.
     """
     with _get_db() as conn:
         rows = conn.execute(
@@ -192,9 +248,13 @@ def get_all_reminders(offset=0, limit=50):
 
 def count_reminders():
     """
-    Return the total number of reminder records in the local database.
+    Return the total number of reminder records stored in the local database.
 
-    :returns: int
+    Used by list_reminders() to populate the ``total`` field in paginated
+    responses so callers know whether more pages exist.
+
+    :returns: int — total row count in sent_reminders (0 if the table is empty)
+    :raises sqlite3.OperationalError: if the database cannot be queried.
     """
     with _get_db() as conn:
         row = conn.execute("SELECT COUNT(*) FROM sent_reminders").fetchone()
@@ -206,10 +266,16 @@ def _api_get(path, params=None):
     """
     Perform an authenticated GET request against the main RefOnRecord API.
 
-    :param path:   str  — API path, e.g. '/verification-requests/'
-    :param params: dict — optional query parameters
-    :returns: parsed JSON response (list or dict)
-    :raises: requests.RequestException on network or HTTP errors
+    Attaches the M2M_API_KEY via the X-API-Key header so the main API
+    recognises this service as a machine-to-machine caller.
+
+    :param path:   str  — API path relative to /api, e.g. '/verification-requests/'
+    :param params: dict | None — optional URL query parameters
+    :returns: list | dict — parsed JSON body of the response
+    :raises requests.HTTPError: if the server returns a 4xx or 5xx status.
+        Callers should log and continue rather than crash the scheduler job.
+    :raises requests.ConnectionError: if the main API is unreachable.
+    :raises requests.Timeout: if the request exceeds the 10-second timeout.
     """
     url  = f"{API_BASE_URL}/api{path}"
     resp = requests.get(url, headers=M2M_HEADERS, params=params, timeout=10)
@@ -221,10 +287,15 @@ def _api_patch(path, payload):
     """
     Perform an authenticated PATCH request against the main RefOnRecord API.
 
-    :param path:    str  — API path, e.g. '/verification-requests/5/'
-    :param payload: dict — request body
-    :returns: parsed JSON response
-    :raises: requests.RequestException on network or HTTP errors
+    Used exclusively by expire_stale() to update verification request status.
+
+    :param path:    str  — API path relative to /api,
+                           e.g. '/verification-requests/5/'
+    :param payload: dict — JSON body to send (e.g. {"status": "expired"})
+    :returns: dict — parsed JSON body of the response
+    :raises requests.HTTPError: if the server returns a 4xx or 5xx status.
+    :raises requests.ConnectionError: if the main API is unreachable.
+    :raises requests.Timeout: if the request exceeds the 10-second timeout.
     """
     url  = f"{API_BASE_URL}/api{path}"
     resp = requests.patch(url, headers=M2M_HEADERS, json=payload, timeout=10)
@@ -235,15 +306,26 @@ def _api_patch(path, payload):
 
 def send_reminder_email(vr):
     """
-    Compose and send a verification reminder email via the Maileroo HTTP API.
+    Compose and dispatch a verification reminder email via the Maileroo API.
 
-    When SENDING_API_KEY is not set the function logs what it *would* send
-    (dry-run mode) and returns without making any network request.
+    When SENDING_API_KEY is not configured the function operates in dry-run
+    mode: it logs what it *would* send and returns immediately without making
+    any network request.  This is useful for local development and testing.
 
-    :param vr: dict — full verification request object returned by the M2M
-               API, including a ``context`` block with company_name,
-               position_title, requester_username, and verification_token
-    :raises: requests.HTTPError if Maileroo returns a non-2xx status
+    :param vr: dict — full verification request object as returned by the M2M
+               endpoint.  Must contain the top-level keys ``request_id``,
+               ``verifier_email``, ``verifier_name``, ``verification_token``,
+               and a nested ``context`` dict with ``requester_username``,
+               ``position_title``, and ``company_name``.
+    :returns: None
+    :raises KeyError: if ``vr`` is missing any of the required keys listed
+        above.  The caller (send_reminders) catches broad exceptions per
+        request and logs the failure.
+    :raises requests.HTTPError: if Maileroo returns a non-2xx HTTP status.
+        The error is logged by send_reminders and the request is skipped;
+        it will be retried on the next scheduler run.
+    :raises requests.ConnectionError: if the Maileroo API is unreachable.
+    :raises requests.Timeout: if the POST to Maileroo exceeds 15 seconds.
     """
     ctx            = vr["context"]
     verifier_email = vr["verifier_email"]
@@ -313,10 +395,23 @@ to verify their role as <strong>{position}</strong> at <strong>{company}</strong
 
 def send_reminders():
     """
-    Poll the main API for pending requests older than REMINDER_DAYS days,
-    skip those already reminded, and send reminder emails to the rest.
+    Scheduled job: send reminder emails for long-pending verification requests.
 
-    Updates _stats["reminders"] with the run timestamp and counts.
+    Steps:
+      1. Fetch all pending requests older than REMINDER_DAYS days from the
+         main API using the M2M key.
+      2. For each request not yet recorded in the local SQLite database,
+         send a reminder email via Maileroo and record it so it is not sent again.
+      3. Update the in-memory _stats dict with run timestamp and counts.
+
+    Exceptions are handled per-request so a single failure (network error,
+    bad email address, DB write failure) does not abort the entire run.
+    If the initial API fetch fails the job logs the error and returns early.
+
+    :returns: None
+    :raises: does not raise — all exceptions from _api_get, send_reminder_email,
+        and record_reminder are caught, logged at ERROR level, and suppressed
+        so the scheduler can invoke the job again on the next interval.
     """
     log.info("Job: send_reminders (older_than=%d days)", REMINDER_DAYS)
     sent = 0
@@ -353,10 +448,22 @@ def send_reminders():
 
 def expire_stale():
     """
-    Poll the main API for pending requests whose token has expired and
-    mark each one as 'expired' via PATCH so the owner can re-request.
+    Scheduled job: mark verification requests with expired tokens as 'expired'.
 
-    Updates _stats["expiry"] with the run timestamp and counts.
+    Steps:
+      1. Fetch all pending requests whose 30-day token window has passed
+         from the main API using the M2M key (?expired=true filter).
+      2. PATCH each one to status='expired' so the resume owner is unblocked
+         and can send a fresh verification request.
+      3. Update the in-memory _stats dict with run timestamp and counts.
+
+    Exceptions are handled per-request so a single PATCH failure does not
+    abort the processing of remaining stale requests.
+
+    :returns: None
+    :raises: does not raise — all exceptions from _api_get and _api_patch are
+        caught, logged at ERROR level, and suppressed so the scheduler can
+        invoke the job again on the next interval.
     """
     log.info("Job: expire_stale")
     expired_count = 0
@@ -393,11 +500,18 @@ def require_service_key(func):
     """
     Decorator that enforces X-Service-Key authentication on Flask routes.
 
-    Returns 503 if SERVICE_API_KEY is not configured on the server.
-    Returns 401 if the header is missing or does not match.
+    Wraps a Flask view function and checks the incoming X-Service-Key header
+    before delegating to the view.  The wrapper preserves the original
+    function's name and docstring via functools.wraps.
 
-    :param func: the Flask view function to protect
-    :returns: decorated function
+    :param func: callable — the Flask view function to protect
+    :returns: callable — the wrapped function that performs the key check
+        before calling ``func``; returns one of:
+          - 503 JSON if SERVICE_API_KEY is not configured on the server
+          - 401 JSON if the header is absent or does not match SERVICE_API_KEY
+          - the original view's response if the key is valid
+    :raises: does not raise — authentication failures are returned as HTTP
+        error responses, not exceptions.
     """
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -414,10 +528,16 @@ def require_service_key(func):
 @app.route("/health")
 def health():
     """
-    Liveness probe — returns 200 OK if the service process is running.
-    No authentication required.
+    Liveness probe — confirms the service process is running and reachable.
 
-    :returns: JSON {"status": "ok", "service": ..., "timestamp": ...}
+    No authentication is required so that load balancers and monitoring
+    tools can poll this endpoint freely.
+
+    :returns: 200 JSON {"status": "ok", "service": str, "timestamp": str,
+        "links": list} — timestamp is ISO-8601 UTC; links include self and
+        the authenticated /api/status resource.
+    :raises: does not raise — any internal error would surface as a 500
+        from Flask's default error handler.
     """
     return jsonify({
         "status":    "ok",
@@ -435,9 +555,21 @@ def health():
 def get_status():
     """
     Return the current scheduler state and cumulative job statistics.
-    Requires X-Service-Key header.
 
-    :returns: JSON with scheduler info, per-job stats, and HATEOAS links
+    Requires a valid X-Service-Key header (enforced by require_service_key).
+    The stats snapshot is taken under the _stats_lock so values are
+    consistent even if a job is running concurrently.
+
+    :returns: 200 JSON {
+        "scheduler": {running, poll_interval_seconds, reminder_days, jobs},
+        "stats":     {reminders: {...}, expiry: {...}},
+        "config":    {api_base_url, reminder_db, dry_run},
+        "links":     list of HATEOAS link objects
+      }
+    :raises: 401 JSON {"error": ...} — returned by require_service_key if
+        the X-Service-Key header is missing or incorrect.
+    :raises: 503 JSON {"error": ...} — returned by require_service_key if
+        SERVICE_API_KEY is not set on the server.
     """
     jobs = []
     for job in scheduler.get_jobs():
@@ -473,11 +605,22 @@ def get_status():
 @require_service_key
 def list_reminders():
     """
-    Return a paginated list of all reminder emails sent, from the local
-    SQLite log.  Supports ?offset=<int>&limit=<int> query parameters.
-    Requires X-Service-Key header.
+    Return a paginated list of all reminder emails that have been sent.
 
-    :returns: JSON {"total": int, "offset": int, "limit": int, "reminders": [...]}
+    Reads from the local SQLite log.  Supports the query parameters
+    ``offset`` (int, default 0) and ``limit`` (int, default 50, max 200).
+
+    :returns: 200 JSON {
+        "total":     int  — total records in the database,
+        "offset":    int  — the applied offset,
+        "limit":     int  — the applied limit,
+        "reminders": list — [{request_id, reminded_at}, ...],
+        "links":     list — HATEOAS self link
+      }
+    :raises: 400 JSON {"error": ...} — if ``offset`` or ``limit`` cannot be
+        parsed as integers.
+    :raises: 401 JSON {"error": ...} — if X-Service-Key is missing or wrong.
+    :raises: 503 JSON {"error": ...} — if SERVICE_API_KEY is not configured.
     """
     try:
         offset = max(0, int(request.args.get("offset", 0)))
@@ -504,10 +647,19 @@ def list_reminders():
 def trigger_reminders():
     """
     Immediately trigger the send_reminders job in a background thread.
-    Useful for testing or manual operation.
-    Requires X-Service-Key header.
 
-    :returns: JSON {"job": "reminders", "status": "triggered", ...}
+    Returns 202 Accepted straight away; the job runs asynchronously.
+    Use GET /api/status afterwards to see updated statistics.
+    Requires a valid X-Service-Key header.
+
+    :returns: 202 JSON {
+        "job":          "reminders",
+        "status":       "triggered",
+        "triggered_at": str (ISO-8601 UTC),
+        "links":        [{"rel": "status", "href": "/api/status"}]
+      }
+    :raises: 401 JSON {"error": ...} — if X-Service-Key is missing or wrong.
+    :raises: 503 JSON {"error": ...} — if SERVICE_API_KEY is not configured.
     """
     thread = threading.Thread(target=send_reminders, daemon=True)
     thread.start()
@@ -526,10 +678,19 @@ def trigger_reminders():
 def trigger_expiry():
     """
     Immediately trigger the expire_stale job in a background thread.
-    Useful for testing or manual operation.
-    Requires X-Service-Key header.
 
-    :returns: JSON {"job": "expiry", "status": "triggered", ...}
+    Returns 202 Accepted straight away; the job runs asynchronously.
+    Use GET /api/status afterwards to see updated statistics.
+    Requires a valid X-Service-Key header.
+
+    :returns: 202 JSON {
+        "job":          "expiry",
+        "status":       "triggered",
+        "triggered_at": str (ISO-8601 UTC),
+        "links":        [{"rel": "status", "href": "/api/status"}]
+      }
+    :raises: 401 JSON {"error": ...} — if X-Service-Key is missing or wrong.
+    :raises: 503 JSON {"error": ...} — if SERVICE_API_KEY is not configured.
     """
     thread = threading.Thread(target=expire_stale, daemon=True)
     thread.start()
