@@ -1,0 +1,312 @@
+openapi: 3.0.3
+info:
+  title: RefOnRecord Reminder Service API
+  description: |
+    REST API for monitoring and manually controlling the RefOnRecord
+    Verification Reminder Service.
+
+    All `/api/*` endpoints require the `X-Service-Key` header.
+    The `/health` endpoint is public (no auth required).
+
+    The service also runs two scheduled background jobs automatically:
+    - **send_reminders** — polls the main API for pending verification requests
+      older than `REMINDER_DAYS` days and sends reminder emails.
+    - **expire_stale** — marks expired verification tokens as `expired` via
+      the main API so resume owners can re-request.
+  version: "1.0.0"
+  contact:
+    name: RefOnRecord Team
+
+servers:
+  - url: http://localhost:5001
+    description: Local development
+
+components:
+  securitySchemes:
+    ServiceKey:
+      type: apiKey
+      in: header
+      name: X-Service-Key
+      description: Secret key configured via the SERVICE_API_KEY environment variable.
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: RefOnRecord Reminder Service
+        timestamp:
+          type: string
+          format: date-time
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/Link"
+
+    StatusResponse:
+      type: object
+      properties:
+        scheduler:
+          type: object
+          properties:
+            running:
+              type: boolean
+            poll_interval_seconds:
+              type: integer
+              example: 900
+            reminder_days:
+              type: integer
+              example: 7
+            jobs:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  next_run_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+        stats:
+          type: object
+          properties:
+            reminders:
+              type: object
+              properties:
+                last_run_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                last_sent_count:
+                  type: integer
+                total_sent:
+                  type: integer
+            expiry:
+              type: object
+              properties:
+                last_run_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                last_expired_count:
+                  type: integer
+                total_expired:
+                  type: integer
+        config:
+          type: object
+          properties:
+            api_base_url:
+              type: string
+            reminder_db:
+              type: string
+            dry_run:
+              type: boolean
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/Link"
+
+    ReminderRecord:
+      type: object
+      properties:
+        request_id:
+          type: integer
+          description: Verification request ID from the main API
+        reminded_at:
+          type: string
+          format: date-time
+          description: ISO-8601 UTC timestamp when the reminder was sent
+
+    RemindersListResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        offset:
+          type: integer
+        limit:
+          type: integer
+        reminders:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReminderRecord"
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/Link"
+
+    JobTriggerResponse:
+      type: object
+      properties:
+        job:
+          type: string
+          example: reminders
+        status:
+          type: string
+          example: triggered
+        triggered_at:
+          type: string
+          format: date-time
+        links:
+          type: array
+          items:
+            $ref: "#/components/schemas/Link"
+
+    Link:
+      type: object
+      properties:
+        rel:
+          type: string
+        href:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      description: Returns 200 OK if the service process is running. No authentication required.
+      operationId: health
+      tags:
+        - Monitoring
+      responses:
+        "200":
+          description: Service is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/status:
+    get:
+      summary: Service status and job statistics
+      description: Returns scheduler state, per-job cumulative statistics, and configuration summary.
+      operationId: getStatus
+      tags:
+        - Monitoring
+      security:
+        - ServiceKey: []
+      responses:
+        "200":
+          description: Current service status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusResponse"
+        "401":
+          description: Missing or invalid X-Service-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: SERVICE_API_KEY not configured on server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/reminders:
+    get:
+      summary: List reminders sent
+      description: |
+        Returns a paginated log of all reminder emails that have been sent,
+        sourced from the local SQLite database.
+      operationId: listReminders
+      tags:
+        - Reminders
+      security:
+        - ServiceKey: []
+      parameters:
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Pagination offset
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 200
+          description: Maximum number of records to return
+      responses:
+        "200":
+          description: List of reminder records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemindersListResponse"
+        "400":
+          description: Invalid offset or limit parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid X-Service-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/jobs/reminders/run:
+    post:
+      summary: Manually trigger reminder job
+      description: |
+        Immediately runs the `send_reminders` job in a background thread.
+        Returns 202 Accepted — the job runs asynchronously.
+      operationId: triggerReminders
+      tags:
+        - Jobs
+      security:
+        - ServiceKey: []
+      responses:
+        "202":
+          description: Job triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobTriggerResponse"
+        "401":
+          description: Missing or invalid X-Service-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/jobs/expiry/run:
+    post:
+      summary: Manually trigger expiry job
+      description: |
+        Immediately runs the `expire_stale` job in a background thread.
+        Returns 202 Accepted — the job runs asynchronously.
+      operationId: triggerExpiry
+      tags:
+        - Jobs
+      security:
+        - ServiceKey: []
+      responses:
+        "202":
+          description: Job triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobTriggerResponse"
+        "401":
+          description: Missing or invalid X-Service-Key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"

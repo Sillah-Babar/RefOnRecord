@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RefOnRecord — Verified Resumes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Toast notification container -->
+  <div id="toast-container"></div>
+
+  <!-- ================================================================
+       VIEW: AUTH  (login / register)
+  ================================================================ -->
+  <div id="view-auth" class="view">
+    <div class="auth-bg">
+      <div class="auth-wrapper">
+
+        <div class="auth-brand">
+          <div class="brand-logo">✓</div>
+          <h1 class="brand-name">RefOnRecord</h1>
+          <p class="brand-sub">Verified Professional Resumes</p>
+        </div>
+
+        <div class="auth-card">
+          <div class="tab-bar auth-tabs">
+            <button class="tab-btn active" data-tab="login">Sign In</button>
+            <button class="tab-btn" data-tab="register">Create Account</button>
+          </div>
+
+          <!-- Login form -->
+          <form id="form-login" class="auth-form">
+            <div class="form-group">
+              <label for="login-email">Email</label>
+              <input id="login-email" name="email" type="email" required
+                     placeholder="you@example.com" autocomplete="email" />
+            </div>
+            <div class="form-group">
+              <label for="login-password">Password</label>
+              <input id="login-password" name="password" type="password" required
+                     placeholder="••••••••" autocomplete="current-password" />
+            </div>
+            <button type="submit" class="btn-primary full">Sign In</button>
+          </form>
+
+          <!-- Register form -->
+          <form id="form-register" class="auth-form hidden">
+            <div class="form-group">
+              <label for="reg-email">Email *</label>
+              <input id="reg-email" name="email" type="email" required
+                     placeholder="you@example.com" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="reg-username">Username * <span class="hint">(3–100 chars)</span></label>
+                <input id="reg-username" name="username" type="text" required
+                       minlength="3" maxlength="100" placeholder="johndoe" />
+              </div>
+              <div class="form-group">
+                <label for="reg-phone">Phone</label>
+                <input id="reg-phone" name="phone" type="tel"
+                       placeholder="+358 40 123 4567" maxlength="20" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="reg-password">Password * <span class="hint">(min 8 chars)</span></label>
+              <input id="reg-password" name="password" type="password" required
+                     minlength="8" placeholder="At least 8 characters" />
+            </div>
+            <button type="submit" class="btn-primary full">Create Account</button>
+          </form>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================
+       VIEW: DASHBOARD
+  ================================================================ -->
+  <div id="view-dashboard" class="view hidden">
+
+    <header class="app-header">
+      <div class="header-brand">
+        <span class="logo-mark">✓</span>
+        <span class="logo-text">RefOnRecord</span>
+      </div>
+      <nav class="header-nav">
+        <span id="header-username" class="nav-user"></span>
+        <button id="btn-logout" class="btn-ghost">Sign Out</button>
+      </nav>
+    </header>
+
+    <main class="main-content">
+      <div class="page-header">
+        <div>
+          <h2 class="page-title">My Resumes</h2>
+          <p class="page-sub">Manage your professional resume projects</p>
+        </div>
+        <button id="btn-new-project" class="btn-primary">+ New Resume</button>
+      </div>
+      <div id="projects-grid" class="projects-grid"></div>
+    </main>
+
+  </div>
+
+  <!-- ================================================================
+       VIEW: PROJECT DETAIL  (overview / experiences / shares tabs)
+  ================================================================ -->
+  <div id="view-project" class="view hidden">
+
+    <header class="app-header">
+      <div class="header-brand">
+        <span class="logo-mark">✓</span>
+        <span class="logo-text">RefOnRecord</span>
+      </div>
+      <nav class="header-nav">
+        <button id="btn-back-dashboard" class="btn-ghost">← My Resumes</button>
+        <button id="btn-logout-project" class="btn-ghost">Sign Out</button>
+      </nav>
+    </header>
+
+    <main class="main-content">
+
+      <div class="breadcrumb">
+        <span class="bc-root text-muted">My Resumes</span>
+        <span class="bc-sep">›</span>
+        <span id="project-breadcrumb-name" class="bc-current">Project</span>
+      </div>
+
+      <div class="project-header">
+        <h1 id="project-title-display" class="project-title"></h1>
+        <div id="project-badges" class="project-badges"></div>
+      </div>
+
+      <div class="tab-bar project-tabs">
+        <button class="tab-btn active" data-tab="overview">Overview</button>
+        <button class="tab-btn" data-tab="experiences">Experiences</button>
+        <button class="tab-btn" data-tab="shares">Share Links</button>
+      </div>
+
+      <!-- Tab: Overview — edit resume metadata -->
+      <div id="tab-overview" class="tab-content">
+        <div class="card">
+          <h3 class="card-title">Resume Details</h3>
+          <form id="form-edit-project">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Resume Name *</label>
+                <input name="project_name" type="text" required maxlength="200" />
+              </div>
+              <div class="form-group">
+                <label>Template Style</label>
+                <select name="template_style">
+                  <option value="classic">Classic</option>
+                  <option value="modern">Modern</option>
+                  <option value="minimal">Minimal</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Employment Status</label>
+                <select name="is_employed">
+                  <option value="false">Unemployed / Seeking</option>
+                  <option value="true">Currently Employed</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Current Company</label>
+                <input name="current_company" type="text"
+                       placeholder="e.g. TechCorp" maxlength="200" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Phone Number</label>
+                <input name="phone_number" type="tel"
+                       placeholder="+358 40 123 4567" maxlength="20" />
+              </div>
+              <div class="form-group">
+                <label>LinkedIn URL</label>
+                <input name="linkedin_url" type="url"
+                       placeholder="https://linkedin.com/in/you" maxlength="500" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>GitHub URL</label>
+                <input name="github_url" type="url"
+                       placeholder="https://github.com/you" maxlength="500" />
+              </div>
+              <div class="form-group">
+                <label>Personal Website</label>
+                <input name="personal_website" type="url"
+                       placeholder="https://yoursite.com" maxlength="500" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Education Details</label>
+              <textarea name="education_details" rows="3"
+                placeholder="e.g. B.S. Computer Science, University of Helsinki, 2018–2022"></textarea>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn-primary">Save Changes</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Tab: Experiences -->
+      <div id="tab-experiences" class="tab-content hidden">
+        <div class="tab-section-header">
+          <h3>Work Experiences</h3>
+          <button id="btn-add-experience" class="btn-primary">+ Add Experience</button>
+        </div>
+        <div id="experiences-list"></div>
+      </div>
+
+      <!-- Tab: Share Links -->
+      <div id="tab-shares" class="tab-content hidden">
+        <div class="tab-section-header">
+          <h3>Share Links</h3>
+          <button id="btn-create-share" class="btn-primary">+ Create Share Link</button>
+        </div>
+        <div id="shares-list"></div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ================================================================
+       VIEW: PUBLIC RESUME  (opened via share token in URL hash)
+  ================================================================ -->
+  <div id="view-public" class="view hidden">
+    <div class="public-nav no-print">
+      <div class="header-brand">
+        <span class="logo-mark">✓</span>
+        <span class="logo-text">RefOnRecord</span>
+      </div>
+      <div class="public-nav-actions">
+        <button class="btn-ghost" onclick="window.print()">🖨 Print</button>
+        <button class="btn-ghost" onclick="navigateToHome()">Open App</button>
+      </div>
+    </div>
+    <div id="public-resume-content" class="public-resume-wrapper"></div>
+  </div>
+
+  <!-- ================================================================
+       MODAL OVERLAY  (shared by all modal dialogs)
+  ================================================================ -->
+  <div id="modal-overlay" class="hidden">
+    <div id="modal-content"></div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

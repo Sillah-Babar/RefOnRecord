@@ -3,6 +3,7 @@ import os
 
 from dotenv import load_dotenv
 from flask import Flask
+from flask_cors import CORS
 
 from resumeverifier.extensions import db, cache
 
@@ -30,6 +31,8 @@ def create_app(test_config=None):
         app.config.from_mapping(test_config)
 
     os.makedirs(app.instance_path, exist_ok=True)
+
+    CORS(app)
 
     db.init_app(app)
     cache.init_app(app)
