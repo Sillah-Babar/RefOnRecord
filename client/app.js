@@ -14,7 +14,7 @@
 // ── Configuration ────────────────────────────────────────────
 // Value comes from config.js (loaded before this script in index.html).
 // To switch environments edit config.js — do not hardcode here.
-const API_BASE = window.APP_CONFIG?.API_BASE || 'http://74.241.132.64:8080';
+const API_BASE = window.APP_CONFIG?.API_BASE ?? 'http://74.241.132.64:8080';
 
 // ── Application State ────────────────────────────────────────
 /**

@@ -5,8 +5,8 @@
  * This file is loaded before app.js so the constant is available globally.
  */
 window.APP_CONFIG = {
-  // Deployed server (default)
-  API_BASE: 'http://74.241.132.64:8080',
+  // Deployed via Vercel proxy (vercel.json rewrites /api/* to the VM)
+  API_BASE: '',
 
   // Local development — uncomment the line below and comment out the one above
   // API_BASE: 'http://localhost:5000',
